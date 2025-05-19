@@ -1,1 +1,1 @@
-"""Unit test package for agid_assessment_methodology."""
+"""Test package per AGID Assessment Methodology."""

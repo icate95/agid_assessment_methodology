@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agid_assessment_methodology"
 version = "0.1.0"
-description = "A comprehensive security audit framework for ABSC minimum security measures implementation. This system provides automated security checks, compliance verification, reporting, and scheduling capabilities for IT infrastructure security assessment."
+description = "Framework per audit di sicurezza ABSC"
 readme = "README.rst"
 authors = [
   {name = "Caterina Ianeselli", email = "ianesellicaterina@gmail.com"}
@@ -15,56 +15,42 @@ maintainers = [
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "Intended Audience :: Information Technology",
     "Intended Audience :: System Administrators",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-    "Natural Language :: English",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Topic :: Security",
-    "Topic :: System :: Systems Administration",
+    "Topic :: System :: Systems Administration"
 ]
 license = {text = "GNU General Public License v3"}
 dependencies = [
-    "typer>=0.9.0",         # CLI interface
-    "rich>=13.0.0",         # Rich text and formatting in terminal
-    "pydantic>=2.0.0",      # Data validation
-    "paramiko>=3.0.0",      # SSH connectivity
-    "psutil>=5.9.0",        # System information
-    "schedule>=1.2.0",      # Scheduling capabilities
-    "sqlalchemy>=2.0.0",    # Database ORM
-    "cryptography>=41.0.0", # Cryptographic operations
-    "jinja2>=3.1.0",        # Template engine for reports
-    "pyyaml>=6.0",          # Configuration files
-    "python-dateutil>=2.8.2", # Date handling
-    "requests>=2.28.0",     # HTTP client
-    "pandas>=2.0.0",        # Data manipulation
-    "reportlab>=4.0.0",     # PDF generation
-    "wmi>=1.5.1; platform_system=='Windows'", # Windows Management Instrumentation
+    # Dipendenze minimal per ora
+    "typer>=0.9.0",      # Per la CLI
+    "rich>=13.0.0",      # Per output colorato
+    "psutil>=5.8.0",     # Per informazioni di sistema
+    "jsonschema>=4.0.0", # Per validazione configurazione
 ]
+requires-python = ">=3.8"
 
 [project.optional-dependencies]
 dev = [
-    "coverage",             # testing
-    "mypy",                 # linting
-    "pytest",               # testing
-    "ruff",                 # linting
-    "black",                # code formatting
-    "isort",                # import sorting
+    "coverage",          # Code coverage
+    "mypy",             # Type checking
+    "pytest",           # Testing framework
+    "pytest-cov",       # Coverage plugin per pytest
+    "ruff",             # Linting moderno
+    "black",            # Code formatting
 ]
-postgresql = [
-    "psycopg2>=2.9.5; platform_system!='Windows'",  # PostgreSQL adapter for Linux
-    "psycopg2-binary>=2.9.5; platform_system=='Windows'",  # PostgreSQL adapter for Windows
+pdf = [
+    "weasyprint>=56.0",  # Per generazione PDF
+    "reportlab>=3.6.0",  # Alternativa per PDF semplici
 ]
-web = [
-    "fastapi>=0.100.0",     # REST API
-    "uvicorn>=0.22.0",      # ASGI server
-]
-extras = [
-    "python-nmap>=0.7.1",   # Nmap scanning interface
-    "pyopenvas>=2.0.0",     # OpenVAS vulnerability scanner interface
+all = [
+    "agid_assessment_methodology[dev,pdf]"
 ]
 
 [project.urls]
@@ -73,7 +59,7 @@ changelog = "https://github.com/icate95/agid_assessment_methodology/blob/master/
 homepage = "https://github.com/icate95/agid_assessment_methodology"
 
 [project.scripts]
-agid-assessment = "agid_assessment_methodology.cli:app"
+agid-assessment = "agid_assessment_methodology.cli.main:app"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -81,37 +67,37 @@ package-dir = {"" = "src"}
 [tool.setuptools.package-data]
 "*" = ["*.*"]
 
-# Mypy
-# ----
-
-[tool.mypy]
-files = "."
-
-# Use strict defaults
-strict = true
-warn_unreachable = true
-warn_no_return = true
-
-[[tool.mypy.overrides]]
-# Don't require test functions to include types
-module = "tests.*"
-allow_untyped_defs = true
-disable_error_code = "attr-defined"
-
-# Black
-# -----
-[tool.black]
-line-length = 88
-target-version = ['py38']
-
-# isort
-# -----
-[tool.isort]
-profile = "black"
-line_length = 88
-
-# Ruff
-# ----
+# Configurazione per il linting con ruff
 [tool.ruff]
 line-length = 88
 target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = []
+
+# Configurazione per i test con pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--cov=agid_assessment_methodology",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--strict-markers",
+]
+
+# Configurazione per mypy
+[tool.mypy]
+files = "src"
+strict = true
+warn_unreachable = true
+warn_no_return = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+allow_untyped_defs = true
+disable_error_code = "attr-defined"
