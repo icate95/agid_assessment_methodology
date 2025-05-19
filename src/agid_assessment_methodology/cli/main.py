@@ -5,7 +5,7 @@ from rich.console import Console
 from pathlib import Path
 
 # Import utilities
-from agid_assessment_methodology.src.agid_assessment_methodology.utils import (
+from agid_assessment_methodology.utils import (
     load_config, save_config, setup_logger_from_config,
     get_user_config_dir, ensure_config_dir
 )
@@ -64,7 +64,7 @@ def scan(
 
     try:
         # Crea scanner e esegui scansione
-        scanner = Scanner(target)
+        scanner = Scanner(target, config)
         console.print(f"• Rilevamento sistema operativo...")
         os_type = scanner.detect_os()
         console.print(f"  Sistema rilevato: [green]{os_type}[/green]")
@@ -112,6 +112,7 @@ def scan(
         logger.error(f"Scan error: {str(e)}", exc_info=verbose)
         if verbose:
             console.print_exception()
+        raise typer.Exit(code=1)
 
 
 @app.command()

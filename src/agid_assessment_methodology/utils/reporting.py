@@ -62,12 +62,12 @@ class ReportGenerator:
             self.template_dir.mkdir(parents=True, exist_ok=True)
 
     def generate_report(
-            self,
-            assessment_data: Dict[str, Any],
-            output_path: Union[str, Path],
-            format_type: Union[ExportFormat, str],
-            template_name: Optional[str] = None,
-            include_raw_data: bool = False
+        self,
+        assessment_data: Dict[str, Any],
+        output_path: Union[str, Path],
+        format_type: Union[ExportFormat, str],
+        template_name: Optional[str] = None,
+        include_raw_data: bool = False
     ) -> Path:
         """
         Genera un report dall'assessment.
@@ -336,8 +336,7 @@ class ReportGenerator:
             logger.error(f"Error generating CSV report: {str(e)}")
             raise
 
-    def _generate_html_report(self, report_data: Dict[str, Any], output_path: Path,
-                              template_name: Optional[str] = None) -> Path:
+    def _generate_html_report(self, report_data: Dict[str, Any], output_path: Path, template_name: Optional[str] = None) -> Path:
         """Genera un report in formato HTML."""
         try:
             # Template HTML di base
@@ -367,8 +366,7 @@ class ReportGenerator:
             logger.error(f"Error generating HTML report: {str(e)}")
             raise
 
-    def _generate_pdf_report(self, report_data: Dict[str, Any], output_path: Path,
-                             template_name: Optional[str] = None) -> Path:
+    def _generate_pdf_report(self, report_data: Dict[str, Any], output_path: Path, template_name: Optional[str] = None) -> Path:
         """Genera un report in formato PDF."""
         try:
             # Prima genera HTML temporaneo
@@ -623,9 +621,9 @@ class ReportGenerator:
 
 
 def generate_quick_report(
-        assessment_data: Dict[str, Any],
-        output_dir: str = "reports",
-        report_name: Optional[str] = None
+    assessment_data: Dict[str, Any],
+    output_dir: str = "reports",
+    report_name: Optional[str] = None
 ) -> List[Path]:
     """
     Genera rapidamente report in tutti i formati supportati.

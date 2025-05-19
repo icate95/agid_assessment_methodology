@@ -10,13 +10,13 @@ from datetime import datetime
 
 
 def setup_logger(
-        level: Union[str, int] = logging.INFO,
-        log_file: Optional[str] = None,
-        log_dir: Optional[str] = None,
-        format_string: Optional[str] = None,
-        max_file_size: str = "10MB",
-        backup_count: int = 5,
-        console_output: bool = True
+    level: Union[str, int] = logging.INFO,
+    log_file: Optional[str] = None,
+    log_dir: Optional[str] = None,
+    format_string: Optional[str] = None,
+    max_file_size: str = "10MB",
+    backup_count: int = 5,
+    console_output: bool = True
 ) -> logging.Logger:
     """
     Configura il sistema di logging.
@@ -36,9 +36,9 @@ def setup_logger(
     # Ottiene il logger root per il package
     logger = logging.getLogger("agid_assessment_methodology")
 
-    # Evita di aggiungere handler multipli
-    if logger.handlers:
-        return logger
+    # Rimuovi tutti i handler esistenti per evitare duplicazioni
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
 
     # Converte il livello se è una stringa
     if isinstance(level, str):
@@ -73,6 +73,8 @@ def setup_logger(
             log_path = Path(log_dir) / log_file
         else:
             log_path = Path(log_file)
+            # Assicura che la directory parent esista
+            log_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Converte la dimensione massima del file
         max_bytes = _parse_file_size(max_file_size)
@@ -198,12 +200,12 @@ class ColoredFormatter(logging.Formatter):
 
     # Codici colori ANSI
     COLORS = {
-        'DEBUG': '\033[36m',  # Ciano
-        'INFO': '\033[32m',  # Verde
-        'WARNING': '\033[33m',  # Giallo
-        'ERROR': '\033[31m',  # Rosso
-        'CRITICAL': '\033[35m',  # Magenta
-        'RESET': '\033[0m'  # Reset
+        'DEBUG': '\033[36m',      # Ciano
+        'INFO': '\033[32m',       # Verde
+        'WARNING': '\033[33m',    # Giallo
+        'ERROR': '\033[31m',      # Rosso
+        'CRITICAL': '\033[35m',   # Magenta
+        'RESET': '\033[0m'        # Reset
     }
 
     def format(self, record):
@@ -229,8 +231,8 @@ class ColoredFormatter(logging.Formatter):
 
 
 def setup_colored_logger(
-        level: Union[str, int] = logging.INFO,
-        log_file: Optional[str] = None
+    level: Union[str, int] = logging.INFO,
+    log_file: Optional[str] = None
 ) -> logging.Logger:
     """
     Configura un logger con output colorato per la console.
@@ -284,7 +286,6 @@ def log_function_call(logger: logging.Logger):
     Args:
         logger: Logger da utilizzare
     """
-
     def decorator(func):
         def wrapper(*args, **kwargs):
             logger.debug(f"Calling {func.__name__} with args={args}, kwargs={kwargs}")
@@ -295,9 +296,7 @@ def log_function_call(logger: logging.Logger):
             except Exception as e:
                 logger.error(f"Error in {func.__name__}: {str(e)}")
                 raise
-
         return wrapper
-
     return decorator
 
 

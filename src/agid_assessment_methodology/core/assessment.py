@@ -110,8 +110,14 @@ class Assessment:
         Returns:
             Analisi del controllo
         """
-        status = check_result.get("status", "unknown")
-        issues = check_result.get("issues", [])
+        # Gestisce sia il formato nuovo (con status, issues, etc.) che quello vecchio
+        if isinstance(check_result, dict):
+            status = check_result.get("status", "unknown")
+            issues = check_result.get("issues", [])
+        else:
+            # Fallback per formati non previsti
+            status = "unknown"
+            issues = []
 
         analysis = {
             "status": status,
@@ -123,14 +129,15 @@ class Assessment:
 
         # Classifica gli issues per severità
         for issue in issues:
-            severity = issue.get("severity", "medium")
-            if severity in ["critical", "high"]:
-                analysis["critical_issues"].append(issue)
-            else:
-                analysis["warnings"].append(issue)
+            if isinstance(issue, dict):
+                severity = issue.get("severity", "medium")
+                if severity in ["critical", "high"]:
+                    analysis["critical_issues"].append(issue)
+                else:
+                    analysis["warnings"].append(issue)
 
         # Genera raccomandazioni base
-        if status == "failed" or analysis["critical_issues"]:
+        if status == "fail" or analysis["critical_issues"]:
             analysis["recommendations"].append({
                 "check": check_name,
                 "priority": "high" if analysis["critical_issues"] else "medium",
