@@ -23,7 +23,11 @@ class TestCLI:
         """Test del comando info."""
         result = self.runner.invoke(app, ["info"])
         assert result.exit_code == 0
-        assert "Framework per audit di sicurezza" in result.stdout
+        # Cambiamo il test per verificare che ci siano le informazioni di sistema
+        assert "System Information" in result.stdout
+        assert "Platform" in result.stdout
+        assert "Python Version" in result.stdout
+        assert "Tool Version" in result.stdout
 
     def test_help_command(self):
         """Test del comando help."""

@@ -290,12 +290,30 @@ class TestCoreExtended:
             with open(report_path) as f:
                 report_data = json.load(f)
 
+            # Verifica che le sezioni principali siano presenti
             assert "executive_summary" in report_data
-            assert "compliance" in report_data
+            assert "compliance_summary" in report_data  # Cambiato da "compliance" a "compliance_summary"
+            assert "detailed_results" in report_data
+            assert "metadata" in report_data
+
+            # Verifica structure del compliance_summary
+            compliance = report_data["compliance_summary"]
+            assert "overall_compliance_score" in compliance
+            assert "basic_compliance" in compliance
+            assert "standard_compliance" in compliance
+            assert "advanced_compliance" in compliance
+
+            # Verifica che il punteggio sia numerico
+            assert isinstance(compliance["overall_compliance_score"], (int, float))
+
+            # Verifica executive summary
+            exec_summary = report_data["executive_summary"]
+            assert "overall_risk_level" in exec_summary
+            assert "scan_timestamp" in exec_summary
 
         finally:
-            temp_path.unlink()
-
+            if temp_path.exists():
+                temp_path.unlink()
     def test_scanner_get_available_checks_with_registry(self):
         """Test get_available_checks con registry reale."""
         scanner = Scanner("localhost")

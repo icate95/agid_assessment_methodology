@@ -6,6 +6,7 @@ import logging
 from typing import Dict, Any, Optional, Union
 from pathlib import Path
 import jsonschema
+import platform
 
 logger = logging.getLogger(__name__)
 
@@ -353,28 +354,47 @@ def ensure_config_dir() -> Path:
     config_dir = get_user_config_dir()
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir
+# Aggiungere questa funzione al file src/agid_assessment_methodology/utils/config.py
 
-
-def create_default_config_file(config_path: Union[str, Path]) -> bool:
+def create_default_config() -> Dict[str, Any]:
     """
-    Crea un file di configurazione di default.
-
-    Args:
-        config_path: Percorso dove creare il file
+    Crea una configurazione di default.
 
     Returns:
-        True se il file è stato creato con successo
+        Dizionario con la configurazione di default
     """
-    try:
-        # Assicura che la directory esista
-        os.makedirs(os.path.dirname(config_path), exist_ok=True)
-
-        # Salva la configurazione di default
-        return save_config(DEFAULT_CONFIG, config_path)
-
-    except Exception as e:
-        logger.error(f"Error creating default config file: {str(e)}")
-        return False
+    return {
+        "logging": {
+            "level": "INFO",
+            "file_logging": True,
+            "log_file": str(Path.home() / ".agid_assessment" / "logs" / "assessment.log"),
+            "max_file_size": "10MB",
+            "backup_count": 5,
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        },
+        "scan": {
+            "timeout": 300,
+            "parallel": True,
+            "max_workers": 4,
+            "retry_attempts": 3,
+            "retry_delay": 1.0
+        },
+        "checks": {
+            "enabled_categories": ["system", "authentication", "network", "logging"],
+            "excluded_checks": [],
+            "custom_checks_path": None
+        },
+        "reporting": {
+            "include_raw_data": True,
+            "include_system_info": True,
+            "default_format": "html",
+            "output_directory": str(Path.home() / ".agid_assessment" / "reports")
+        },
+        "credentials": {
+            "store_encrypted": True,
+            "use_system_credentials": True
+        }
+    }
 
 
 def get_user_config_dir() -> Path:
@@ -382,17 +402,18 @@ def get_user_config_dir() -> Path:
     Ottiene la directory di configurazione dell'utente.
 
     Returns:
-        Percorso alla directory di configurazione
+        Path della directory di configurazione
     """
-    # Su Windows usa APPDATA, su Unix usa ~/.config
-    if os.name == 'nt':
-        config_dir = Path(os.environ.get('APPDATA', os.path.expanduser('~'))) / 'agid_assessment'
-    else:
-        config_dir = Path(os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))) / 'agid_assessment'
+    if platform.system() == "Windows":
+        config_dir = Path.home() / "AppData" / "Local" / "agid_assessment"
+    elif platform.system() == "Darwin":  # macOS
+        config_dir = Path.home() / "Library" / "Application Support" / "agid_assessment"
+    else:  # Linux e altri Unix
+        config_dir = Path.home() / ".config" / "agid_assessment"
 
+    # Crea la directory se non esiste
+    config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir
-
-
 def ensure_config_dir() -> Path:
     """
     Assicura che la directory di configurazione esista.

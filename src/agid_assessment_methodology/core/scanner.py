@@ -151,6 +151,76 @@ class Scanner:
         logger.info(f"Basic scan completed for target: {self.target}")
         return results
 
+    # Aggiungere questo metodo alla classe Scanner in src/agid_assessment_methodology/core/scanner.py
+
+    def scan(self, enabled_categories: Optional[List[str]] = None, specific_checks: Optional[List[str]] = None) -> Dict[
+        str, Any]:
+        """
+        Esegue una scansione del sistema con filtri opzionali.
+
+        Args:
+            enabled_categories: Lista delle categorie di controlli da eseguire
+            specific_checks: Lista dei controlli specifici da eseguire
+
+        Returns:
+            Dizionario con i risultati della scansione
+        """
+        logger.info(f"Starting scan of target: {self.target}")
+
+        # Importa il registro dei checks
+        from ..checks import registry
+
+        # Prepara il contesto per i checks
+        context = {
+            "target": self.target,
+            "os_type": self.os_type or self.detect_os(),
+            "is_local": self._is_local,
+            "scanner_config": self.config
+        }
+
+        # Applica filtri se specificati
+        if enabled_categories or specific_checks:
+            # Se sono specificati filtri, esegui solo i controlli specifici
+            if specific_checks:
+                # Esegui solo i controlli specifici
+                check_results = registry.execute_checks(context, check_ids=specific_checks)
+            else:
+                # Esegui solo le categorie specificate
+                check_results = registry.execute_checks(context, categories=enabled_categories)
+        else:
+            # Esegui tutti i checks disponibili
+            check_results = registry.execute_checks(context)
+
+        # Converte i risultati in formato compatibile con Assessment
+        results = {}
+        for check_id, check_result in check_results.items():
+            results[check_id] = check_result.to_dict()
+
+        # Raggruppa per categoria se possibile
+        categorized_results = {}
+        for check_id, result in results.items():
+            category = result.get('category', 'unknown')
+            if category not in categorized_results:
+                categorized_results[category] = {}
+            categorized_results[category][check_id] = result
+
+        # Se non ci sono categorie, usa la struttura originale
+        if not categorized_results:
+            categorized_results = results
+
+        # Aggiungi timestamp e metadati
+        from datetime import datetime
+        categorized_results["scan_metadata"] = {
+            "timestamp": datetime.now().isoformat(),
+            "target": self.target,
+            "scanner_version": "0.1.0",
+            "checks_executed": len(check_results),
+            "os_type": context["os_type"]
+        }
+
+        logger.info(f"Scan completed for target: {self.target}")
+        return categorized_results
+
     def __str__(self) -> str:
         """Rappresentazione string del scanner."""
         return f"Scanner(target='{self.target}', os_type='{self.os_type}')"

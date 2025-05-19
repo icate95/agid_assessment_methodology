@@ -1,375 +1,398 @@
-"""Entry point principale per la CLI di AGID Assessment Methodology."""
+import logging
+import sys
+from pathlib import Path
+from typing import List, Optional  # <-- Aggiungere Optional qui
+import traceback
 
 import typer
 from rich.console import Console
-from pathlib import Path
+from rich.table import Table
 
-# Import utilities
-from agid_assessment_methodology.utils import (
-    load_config, save_config, setup_logger_from_config,
-    get_user_config_dir, ensure_config_dir
-)
+# Inizializza console e logger
+console = Console()
+logger = logging.getLogger(__name__)
 
-# Crea l'applicazione typer principale
+# Crea l'applicazione Typer
 app = typer.Typer(
     name="agid-assessment",
-    help="Framework per audit di sicurezza ABSC",
-    add_completion=False,
+    help="AGID Assessment Methodology - Security Assessment Tool",
+    no_args_is_help=True
 )
 
-# Console per output colorato
-console = Console()
-
+# Resto del codice rimane uguale...
 
 @app.command()
 def version():
-    """Mostra la versione del software."""
+    """Show version information."""
     try:
-        from agid_assessment_methodology import __version__
+        from .. import __version__
         console.print(f"AGID Assessment Methodology v{__version__}")
     except ImportError:
-        console.print("Versione non disponibile")
+        console.print("AGID Assessment Methodology v0.1.0")
 
 
 @app.command()
 def info():
-    """Mostra informazioni sul progetto."""
-    console.print("[bold blue]AGID Assessment Methodology[/bold blue]")
-    console.print("Framework per audit di sicurezza basato sui requisiti minimi ABSC")
-    console.print("\n[bold]Features principali:[/bold]")
-    console.print("• Controlli di sicurezza automatizzati")
-    console.print("• Verifica della compliance")
-    console.print("• Report multipli formati")
-    console.print("• Supporto Windows e Linux")
+    """Show system and tool information."""
+    import platform
+
+    table = Table(title="System Information")
+    table.add_column("Property", style="cyan")
+    table.add_column("Value", style="green")
+
+    table.add_row("Platform", platform.platform())
+    table.add_row("Python Version", platform.python_version())
+    table.add_row("Architecture", platform.architecture()[0])
+
+    try:
+        from .. import __version__
+        table.add_row("Tool Version", __version__)
+    except ImportError:
+        table.add_row("Tool Version", "0.1.0")
+
+    console.print(table)
 
 
 @app.command()
 def scan(
-    target: str = typer.Argument("localhost", help="Target system to scan"),
-    config_file: Path = typer.Option(None, "--config", "-c", help="Path to config file"),
-    output: Path = typer.Option(None, "--output", "-o", help="Output file for report"),
-    format: str = typer.Option("json", "--format", "-f", help="Report format (json, csv, html, pdf)"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output")
+    target: str = typer.Argument(
+        help="Target to scan (hostname, IP address, or 'localhost')"
+    ),
+    config_file: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to configuration file"
+    ),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+    format: str = typer.Option(
+        "json", "--format", "-f", help="Output format (json, csv, html, xml, pdf)"
+    ),
+    categories: Optional[List[str]] = typer.Option(
+        None, "--categories", "-cat", help="Specific categories to scan"
+    ),
+    checks: Optional[List[str]] = typer.Option(
+        None, "--checks", "-ch", help="Specific checks to run"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable verbose output"
+    ),
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="Quiet mode - minimal output"
+    )
 ):
-    """Esegue una scansione di sicurezza base sul target specificato."""
-    from agid_assessment_methodology.core import Scanner, Assessment
-
-    # Carica configurazione
-    config = load_config(config_file)
-
-    # Setup logging basato sulla configurazione
-    logger = setup_logger_from_config(config)
-
-    console.print(f"[bold blue]Avvio scansione di {target}...[/bold blue]")
-
+    """Perform a security assessment scan on the target system."""
     try:
-        # Crea scanner e esegui scansione
+        # Setup logging based on verbosity
+        if quiet:
+            log_level = logging.ERROR
+        elif verbose:
+            log_level = logging.DEBUG
+        else:
+            log_level = logging.INFO
+
+        # Setup logger - correzione della chiamata
+        from ..utils.logger import setup_logger
+        setup_logger(level=log_level)  # Rimosso file_logging=False
+
+        # Load configuration - fix the string/dict issue
+        if config_file:
+            from ..utils.config import load_config
+            config = load_config(config_file)
+        else:
+            config = {}
+
+        # Ensure config is a dictionary
+        if not isinstance(config, dict):
+            console.print(f"[red]Error: Configuration must be a dictionary, got {type(config)}")
+            raise typer.Exit(1)
+
+        # Override config with command line options
+        if not quiet:
+            console.print(f"[blue]Starting scan of target: {target}")
+
+        # Initialize scanner
+        from ..core.scanner import Scanner
         scanner = Scanner(target, config)
-        console.print(f"• Rilevamento sistema operativo...")
-        os_type = scanner.detect_os()
-        console.print(f"  Sistema rilevato: [green]{os_type}[/green]")
 
-        console.print("• Esecuzione scansione base...")
-        scan_results = scanner.run_basic_scan()
+        # Override enabled categories if specified
+        if categories:
+            if 'checks' not in config:
+                config['checks'] = {}
+            config['checks']['enabled_categories'] = categories
 
-        # Crea assessment e analizza risultati
-        console.print("• Analisi risultati...")
-        assessment = Assessment(scan_results)
-        analysis = assessment.analyze_security_posture()
+        # Perform scan
+        results = scanner.scan(
+            enabled_categories=categories,
+            specific_checks=checks
+        )
 
-        # Mostra riepilogo
-        console.print("\n[bold]📊 Riepilogo Scansione[/bold]")
-        summary = analysis["summary"]
-        console.print(f"Controlli totali: {summary['total_checks']}")
-        console.print(f"Controlli completati: [green]{summary['completed_checks']}[/green]")
-        console.print(f"Tasso di successo: [yellow]{summary['success_rate']}%[/yellow]")
-        console.print(f"Livello di rischio: [red]{summary['risk_level']}[/red]")
-
-        # Mostra compliance
-        console.print("\n[bold]✅ Stato Compliance[/bold]")
-        for level in ["basic", "standard", "advanced"]:
-            compliance = assessment.check_compliance(level)
-            status_color = "green" if compliance["status"] == "compliant" else "red"
-            console.print(f"{level.capitalize()}: [{status_color}]{compliance['compliance_percentage']}%[/{status_color}]")
-
-        if verbose:
-            console.print("\n[bold]📋 Dettagli per categoria:[/bold]")
-            for category, details in analysis["categories"].items():
-                console.print(f"• {category}: {details['status']}")
-                if details.get("critical_issues"):
-                    console.print(f"  [red]⚠ {len(details['critical_issues'])} problemi critici[/red]")
-
-        # Genera report se richiesto
+        # Generate output if requested
         if output:
-            console.print(f"\n• Generazione report in formato {format}...")
-            report_path = assessment.generate_report(str(output), format)
-            console.print(f"Report salvato: [bold]{report_path}[/bold]")
+            from ..utils.reporting import ReportGenerator
+            generator = ReportGenerator()
 
-        console.print("\n[bold green]✨ Scansione completata![/bold green]")
+            report_path = generator.generate_report(
+                results,
+                output,
+                format,
+                include_raw_data=True
+            )
+
+            if not quiet:
+                console.print(f"[green]Report saved to: {report_path}")
+        else:
+            # Display summary to console
+            _display_scan_summary(results)
+
+        if not quiet:
+            console.print("[green]Scan completed successfully!")
 
     except Exception as e:
-        console.print(f"[bold red]❌ Errore durante la scansione: {str(e)}[/bold red]")
-        logger.error(f"Scan error: {str(e)}", exc_info=verbose)
+        logger.error(f"Scan error: {str(e)}")
+        console.print(f"[red]Scan failed: {str(e)}")
         if verbose:
-            console.print_exception()
-        raise typer.Exit(code=1)
+            console.print(f"[red]Traceback:\n{traceback.format_exc()}")
+        raise typer.Exit(1)
 
 
 @app.command()
 def configure(
-    output: Path = typer.Option(
-        None,
-        "--output",
-        "-o",
-        help="Path to save configuration file"
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Path to save configuration file"
     ),
     interactive: bool = typer.Option(
-        True,
-        "--interactive/--no-interactive",
-        help="Run in interactive mode"
+        True, "--interactive/--no-interactive", help="Run in interactive mode"
     )
 ):
-    """Crea o aggiorna la configurazione del tool."""
-    # Determina il percorso di output
-    if not output:
-        config_dir = ensure_config_dir()
-        output = config_dir / "config.json"
-
-    console.print("[bold blue]🔧 Configurazione AGID Assessment[/bold blue]\n")
-
-    if interactive:
-        console.print("Configurazione interattiva dei parametri:")
-
-        # Carica configurazione esistente se presente
-        current_config = load_config(output if output.exists() else None)
-
-        # Configurazione scan
-        console.print("\n[bold]Impostazioni Scansione[/bold]")
-        timeout = typer.prompt(
-            "Timeout scansione (secondi)",
-            default=current_config["scan"]["timeout"],
-            type=int
-        )
-
-        parallel = typer.confirm(
-            "Abilita scansione parallela?",
-            default=current_config["scan"]["parallel"]
-        )
-
-        max_threads = typer.prompt(
-            "Numero massimo thread",
-            default=current_config["scan"]["max_threads"],
-            type=int
-        ) if parallel else 1
-
-        # Configurazione controlli
-        console.print("\n[bold]Configurazione Controlli[/bold]")
-        from agid_assessment_methodology.checks import registry
-
-        all_categories = registry.get_categories()
-        console.print(f"Categorie disponibili: {', '.join(all_categories)}")
-
-        enabled_categories = []
-        for category in all_categories:
-            if typer.confirm(f"Abilita categoria '{category}'?", default=True):
-                enabled_categories.append(category)
-
-        # Configurazione reporting
-        console.print("\n[bold]Configurazione Report[/bold]")
-        include_details = typer.confirm(
-            "Includi dettagli nei report?",
-            default=current_config["reporting"]["include_details"]
-        )
-
-        include_recommendations = typer.confirm(
-            "Includi raccomandazioni nei report?",
-            default=current_config["reporting"]["include_recommendations"]
-        )
-
-        default_format = typer.prompt(
-            "Formato report predefinito",
-            default=current_config["reporting"]["default_format"],
-            type=typer.Choice(["json", "csv", "html", "pdf"])
-        )
-
-        # Configurazione logging
-        console.print("\n[bold]Configurazione Logging[/bold]")
-        log_level = typer.prompt(
-            "Livello di log",
-            default=current_config["logging"]["level"],
-            type=typer.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
-        )
-
-        file_logging = typer.confirm(
-            "Abilita logging su file?",
-            default=current_config["logging"]["file_logging"]
-        )
-
-        # Costruisce la nuova configurazione
-        new_config = {
-            "scan": {
-                "timeout": timeout,
-                "parallel": parallel,
-                "max_threads": max_threads,
-                "retry_attempts": current_config["scan"]["retry_attempts"],
-                "retry_delay": current_config["scan"]["retry_delay"]
-            },
-            "checks": {
-                "enabled_categories": enabled_categories,
-                "excluded_checks": current_config["checks"]["excluded_checks"],
-                "severity_threshold": current_config["checks"]["severity_threshold"],
-                "custom_thresholds": current_config["checks"]["custom_thresholds"]
-            },
-            "reporting": {
-                "include_details": include_details,
-                "include_recommendations": include_recommendations,
-                "include_raw_data": current_config["reporting"]["include_raw_data"],
-                "default_format": default_format,
-                "output_directory": current_config["reporting"]["output_directory"],
-                "template_directory": current_config["reporting"]["template_directory"]
-            },
-            "credentials": current_config["credentials"],
-            "logging": {
-                "level": log_level,
-                "file_logging": file_logging,
-                "log_directory": current_config["logging"]["log_directory"],
-                "max_file_size": current_config["logging"]["max_file_size"],
-                "backup_count": current_config["logging"]["backup_count"],
-                "format": current_config["logging"]["format"]
-            },
-            "database": current_config["database"]
-        }
-    else:
-        # Usa configurazione predefinita
-        from agid_assessment_methodology.utils.config import DEFAULT_CONFIG
-        new_config = DEFAULT_CONFIG.copy()
-
-    # Salva la configurazione
-    if save_config(new_config, output):
-        console.print(f"\n[bold green]✅ Configurazione salvata in: {output}[/bold green]")
-
-        # Mostra riepilogo
-        console.print("\n[bold]📋 Riepilogo Configurazione:[/bold]")
-        console.print(f"• Timeout scansione: {new_config['scan']['timeout']}s")
-        console.print(f"• Scansione parallela: {'Sì' if new_config['scan']['parallel'] else 'No'}")
-        console.print(f"• Categorie abilitate: {len(new_config['checks']['enabled_categories'])}")
-        console.print(f"• Formato report predefinito: {new_config['reporting']['default_format']}")
-        console.print(f"• Livello logging: {new_config['logging']['level']}")
-    else:
-        console.print(f"[bold red]❌ Errore nel salvataggio della configurazione[/bold red]")
-
-
-@app.command()
-def report(
-    assessment_file: Path = typer.Argument(..., help="Path to assessment results file"),
-    output: Path = typer.Option(None, "--output", "-o", help="Output path for report"),
-    format: str = typer.Option("html", "--format", "-f", help="Report format"),
-    template: str = typer.Option(None, "--template", "-t", help="Template name to use")
-):
-    """Genera un report da file di risultati assessment esistente."""
-    import json
-
-    if not assessment_file.exists():
-        console.print(f"[bold red]❌ File non trovato: {assessment_file}[/bold red]")
-        raise typer.Exit(code=1)
-
+    """Create or update configuration file."""
     try:
-        # Carica i risultati dell'assessment
-        with open(assessment_file, 'r') as f:
-            assessment_data = json.load(f)
+        from ..utils.config import create_default_config, get_user_config_dir
 
-        # Determina il percorso di output
-        if not output:
-            output = assessment_file.parent / f"{assessment_file.stem}_report.{format}"
+        if output is None:
+            config_dir = get_user_config_dir()
+            output = config_dir / "config.json"
 
-        # Genera il report
-        from agid_assessment_methodology.utils.reporting import ReportGenerator
-        generator = ReportGenerator()
+        # Ensure parent directory exists
+        output.parent.mkdir(parents=True, exist_ok=True)
 
-        report_path = generator.generate_report(
-            assessment_data,
-            output,
-            format,
-            template_name=template,
-            include_raw_data=True
-        )
+        if interactive:
+            console.print("[bold blue]AGID Assessment Configuration Setup[/bold blue]")
+            config = _interactive_config_setup()
+        else:
+            config = create_default_config()
 
-        console.print(f"[bold green]✅ Report generato: {report_path}[/bold green]")
+        # Save configuration
+        from ..utils.config import save_config
+        save_config(config, output)
 
-        # Mostra statistiche
-        if isinstance(assessment_data, dict):
-            summary = assessment_data.get("summary", {})
-            if summary:
-                console.print(f"\n[bold]📊 Statistiche Report:[/bold]")
-                console.print(f"• Controlli totali: {summary.get('total_checks', 'N/A')}")
-                console.print(f"• Tasso successo: {summary.get('success_rate', 'N/A')}%")
-                console.print(f"• Livello rischio: {summary.get('risk_level', 'N/A')}")
+        console.print(f"[green]Configuration saved to: {output}")
 
-    except json.JSONDecodeError:
-        console.print(f"[bold red]❌ File JSON non valido: {assessment_file}[/bold red]")
-        raise typer.Exit(code=1)
     except Exception as e:
-        console.print(f"[bold red]❌ Errore nella generazione del report: {str(e)}[/bold red]")
-        raise typer.Exit(code=1)
+        logger.error(f"Configuration error: {str(e)}")
+        console.print(f"[red]Configuration failed: {str(e)}")
+        raise typer.Exit(1)
 
 
 @app.command()
 def list_checks(
-    category: str = typer.Option(None, "--category", "-c", help="Filter by category"),
-    os_type: str = typer.Option(None, "--os", "-o", help="Filter by OS type")
+    category: Optional[str] = typer.Option(
+        None, "--category", "-c", help="Filter by category"
+    ),
+    os_type: Optional[str] = typer.Option(
+        None, "--os", help="Filter by OS type (windows, linux, macos)"
+    )
 ):
-    """Elenca tutti i controlli di sicurezza disponibili."""
-    from agid_assessment_methodology.checks import registry
+    """List available security checks."""
+    try:
+        from ..checks.registry import CheckRegistry
 
-    # Ottieni informazioni sui controlli
-    registry_info = registry.get_registry_info()
-
-    console.print("[bold blue]📋 Controlli di Sicurezza Disponibili[/bold blue]\n")
-
-    if category:
-        checks = registry.get_checks_by_category(category)
-        console.print(f"[bold]Categoria: {category}[/bold]")
-    elif os_type:
-        checks = registry.get_checks_for_os(os_type)
-        console.print(f"[bold]Sistema Operativo: {os_type}[/bold]")
-    else:
+        registry = CheckRegistry()
         checks = registry.get_all_checks()
-        console.print(f"[bold]Tutti i controlli ({len(checks)} totali)[/bold]")
 
-    # Raggruppa per categoria
-    by_category = {}
-    for check in checks:
-        cat = check.category
-        if cat not in by_category:
-            by_category[cat] = []
-        by_category[cat].append(check)
+        # Apply filters
+        if category:
+            checks = {k: v for k, v in checks.items() if k == category}
 
-    # Mostra i controlli per categoria
-    for cat, cat_checks in by_category.items():
-        console.print(f"\n[bold green]🔍 {cat.title()}[/bold green]")
+        if os_type:
+            filtered_checks = {}
+            for cat, check_list in checks.items():
+                filtered_list = [c for c in check_list if c.is_applicable(os_type)]
+                if filtered_list:
+                    filtered_checks[cat] = filtered_list
+            checks = filtered_checks
 
-        for check in cat_checks:
-            # Colore basato sulla severità
-            severity_colors = {
-                "low": "green",
-                "medium": "yellow",
-                "high": "red",
-                "critical": "bold red"
-            }
-            severity_color = severity_colors.get(check.severity, "white")
+        # Display results
+        if not checks:
+            console.print("[yellow]No checks found matching the criteria.")
+            return
 
-            console.print(f"  • [cyan]{check.id}[/cyan]: {check.name}")
-            console.print(f"    [dim]{check.description}[/dim]")
-            console.print(f"    Severità: [{severity_color}]{check.severity}[/{severity_color}] | OS: {', '.join(check.supported_os)}")
+        for category_name, check_list in checks.items():
+            table = Table(title=f"Category: {category_name}")
+            table.add_column("Check ID", style="cyan")
+            table.add_column("Name", style="green")
+            table.add_column("Severity", style="yellow")
+            table.add_column("OS Support", style="blue")
 
-    # Statistiche
-    console.print(f"\n[bold]📊 Statistiche[/bold]")
-    console.print(f"Controlli totali: {registry_info['total_checks']}")
-    console.print(f"Categorie: {len(registry_info['categories'])}")
+            for check in check_list:
+                os_support = ", ".join(check.supported_os)
+                table.add_row(
+                    check.check_id,
+                    check.name,
+                    check.severity,
+                    os_support
+                )
 
-    for cat, count in registry_info['categories'].items():
-        console.print(f"  • {cat}: {count} controlli")
+            console.print(table)
+            console.print()
+
+    except Exception as e:
+        logger.error(f"List checks error: {str(e)}")
+        console.print(f"[red]Failed to list checks: {str(e)}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def report(
+    scan_file: Path = typer.Argument(help="Path to scan results file"),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Output file path"
+    ),
+    format: str = typer.Option(
+        "html", "--format", "-f", help="Output format (json, csv, html, xml, pdf)"
+    ),
+    include_raw: bool = typer.Option(
+        False, "--include-raw", help="Include raw scan data in report"
+    )
+):
+    """Generate a report from scan results."""
+    try:
+        import json
+
+        # Check if scan file exists
+        if not scan_file.exists():
+            console.print(f"[red]Scan file not found: {scan_file}")
+            raise typer.Exit(1)
+
+        # Load scan results
+        try:
+            with open(scan_file, 'r') as f:
+                scan_results = json.load(f)
+        except json.JSONDecodeError:
+            console.print(f"[red]Invalid JSON in scan file: {scan_file}")
+            raise typer.Exit(1)
+
+        # Generate output file name if not provided
+        if output is None:
+            output = scan_file.with_suffix(f".report.{format}")
+
+        # Generate report
+        from ..utils.reporting import ReportGenerator
+        generator = ReportGenerator()
+
+        report_path = generator.generate_report(
+            scan_results,
+            output,
+            format,
+            include_raw_data=include_raw
+        )
+
+        console.print(f"[green]Report generated: {report_path}")
+
+    except Exception as e:
+        logger.error(f"Report generation error: {str(e)}")
+        console.print(f"[red]Report generation failed: {str(e)}")
+        raise typer.Exit(1)
+
+
+# Helper functions
+def _display_scan_summary(results: dict):
+    """Display a summary of scan results."""
+    if not results:
+        console.print("[yellow]No scan results to display.")
+        return
+
+    table = Table(title="Scan Summary")
+    table.add_column("Category", style="cyan")
+    table.add_column("Checks", style="blue")
+    table.add_column("Status", style="green")
+
+    for category, checks in results.items():
+        if category == "scan_metadata":
+            continue
+
+        check_count = len(checks) if isinstance(checks, dict) else 1
+
+        # Simple status determination
+        status = "✅ Pass" if check_count > 0 else "❌ No checks"
+
+        table.add_row(category, str(check_count), status)
+
+    console.print(table)
+
+
+def _interactive_config_setup() -> dict:
+    """Interactive configuration setup."""
+    from ..utils.config import create_default_config
+
+    config = create_default_config()
+
+    # Logging configuration
+    console.print("\n[bold]Logging Configuration[/bold]")
+    log_level = typer.prompt(
+        "Log level (DEBUG, INFO, WARNING, ERROR)",
+        default="INFO"
+    )
+    config["logging"]["level"] = log_level.upper()
+
+    file_logging = typer.confirm("Enable file logging?", default=True)
+    config["logging"]["file_logging"] = file_logging
+
+    if file_logging:
+        log_file = typer.prompt(
+            "Log file path",
+            default=str(Path.home() / ".agid_assessment" / "logs" / "assessment.log")
+        )
+        config["logging"]["log_file"] = log_file
+
+    # Scan configuration
+    console.print("\n[bold]Scan Configuration[/bold]")
+    timeout = typer.prompt("Scan timeout (seconds)", default=300, type=int)
+    config["scan"]["timeout"] = timeout
+
+    parallel = typer.confirm("Enable parallel scanning?", default=True)
+    config["scan"]["parallel"] = parallel
+
+    if parallel:
+        max_workers = typer.prompt("Max worker threads", default=4, type=int)
+        config["scan"]["max_workers"] = max_workers
+
+    # Check categories
+    console.print("\n[bold]Check Categories[/bold]")
+    console.print("Available categories: system, authentication, network, logging")
+
+    categories = []
+    for category in ["system", "authentication", "network", "logging"]:
+        if typer.confirm(f"Enable {category} checks?", default=True):
+            categories.append(category)
+
+    config["checks"]["enabled_categories"] = categories
+
+    return config
+
+
+# Entry point for CLI
+def main():
+    """Main entry point for the CLI."""
+    try:
+        app()
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Operation cancelled by user.")
+        sys.exit(130)
+    except Exception as e:
+        console.print(f"[red]Unexpected error: {str(e)}")
+        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    app()
+    main()

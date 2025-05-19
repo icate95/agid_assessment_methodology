@@ -176,13 +176,25 @@ class ReportGenerator:
                 category_checks = assessment_data["details"].get(category_name, {})
                 for check_name, check_data in category_checks.items():
                     if check_name != "scan_metadata":
-                        check_result = {
-                            "name": check_name,
-                            "status": check_data.get("status", "unknown"),
-                            "score": check_data.get("score"),
-                            "issues_count": len(check_data.get("issues", [])),
-                            "recommendations_count": len(check_data.get("recommendations", []))
-                        }
+                        # Verifica che check_data sia un dizionario
+                        if isinstance(check_data, dict):
+                            check_result = {
+                                "name": check_name,
+                                "status": check_data.get("status", "unknown"),
+                                "score": check_data.get("score"),
+                                "issues_count": len(check_data.get("issues", [])),
+                                "recommendations_count": len(check_data.get("recommendations", []))
+                            }
+                        else:
+                            # Se check_data non è un dizionario, crea una struttura base
+                            check_result = {
+                                "name": check_name,
+                                "status": "unknown",
+                                "score": None,
+                                "issues_count": 0,
+                                "recommendations_count": 0
+                            }
+
                         category_result["checks"].append(check_result)
 
             detailed_results.append(category_result)
@@ -451,7 +463,15 @@ class ReportGenerator:
 
             # Scrive il file XML
             tree = ET.ElementTree(root)
-            ET.indent(tree, space="  ", level=0)  # Python 3.9+
+
+            # Fallback per ET.indent (non disponibile in Python < 3.9)
+            if hasattr(ET, 'indent'):
+                ET.indent(tree, space="  ", level=0)
+            else:
+                # Implementazione manuale dell'indentazione per Python < 3.9
+                self._indent_xml(root, level=0)
+
+            # Scrivi il file
             tree.write(output_path, encoding='utf-8', xml_declaration=True)
 
             logger.info(f"XML report generated: {output_path}")
@@ -460,6 +480,22 @@ class ReportGenerator:
         except Exception as e:
             logger.error(f"Error generating XML report: {str(e)}")
             raise
+
+    def _indent_xml(self, elem, level=0):
+        """Indentazione manuale per XML (fallback per Python < 3.9)."""
+        indent = "\n" + level * "  "
+        if len(elem):
+            if not elem.text or not elem.text.strip():
+                elem.text = indent + "  "
+            if not elem.tail or not elem.tail.strip():
+                elem.tail = indent
+            for elem in elem:
+                self._indent_xml(elem, level + 1)
+            if not elem.tail or not elem.tail.strip():
+                elem.tail = indent
+        else:
+            if level and (not elem.tail or not elem.tail.strip()):
+                elem.tail = indent
 
     def _get_html_template(self, template_name: Optional[str] = None) -> str:
         """Ottiene il template HTML."""
