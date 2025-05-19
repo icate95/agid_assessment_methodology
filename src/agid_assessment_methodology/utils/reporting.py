@@ -13,6 +13,46 @@ import os
 logger = logging.getLogger(__name__)
 
 
+# File: src/agid_assessment_methodology/utils/reporting.py
+# Aggiungere questa funzione all'inizio del file, dopo gli import
+
+def _get_pdf_library():
+    """Determina quale libreria PDF usare in base alla piattaforma."""
+    import platform
+
+    # Su macOS, prova prima reportlab (più stabile)
+    if platform.system() == "Darwin":
+        try:
+            import reportlab
+            return "reportlab"
+        except ImportError:
+            pass
+
+        try:
+            import weasyprint
+            return "weasyprint"
+        except ImportError:
+            pass
+    else:
+        # Su altre piattaforme, prova prima weasyprint
+        try:
+            import weasyprint
+            return "weasyprint"
+        except ImportError:
+            pass
+
+        try:
+            import reportlab
+            return "reportlab"
+        except ImportError:
+            pass
+
+    return None
+
+
+
+
+
 class ExportFormat(Enum):
     """Formati di esportazione supportati."""
     JSON = "json"
@@ -378,45 +418,144 @@ class ReportGenerator:
             logger.error(f"Error generating HTML report: {str(e)}")
             raise
 
-    def _generate_pdf_report(self, report_data: Dict[str, Any], output_path: Path, template_name: Optional[str] = None) -> Path:
+    def _generate_pdf_report(self, report_data: Dict[str, Any], output_path: Path) -> Path:
         """Genera un report in formato PDF."""
+        pdf_lib = _get_pdf_library()
+
+        if pdf_lib == "reportlab":
+            return self._generate_pdf_with_reportlab(report_data, output_path)
+        elif pdf_lib == "weasyprint":
+            return self._generate_pdf_with_weasyprint(report_data, output_path)
+        else:
+            # Fallback: crea PDF semplice con testo
+            logger.warning("No PDF library available, creating text-based PDF")
+            return self._generate_simple_pdf(report_data, output_path)
+
+    def _generate_pdf_with_reportlab(self, report_data: Dict[str, Any], output_path: Path) -> Path:
+        """Genera PDF usando reportlab (più semplice, sempre funziona)."""
         try:
-            # Prima genera HTML temporaneo
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as tmp_html:
-                temp_html_path = Path(tmp_html.name)
-                self._generate_html_report(report_data, temp_html_path, template_name)
+            from reportlab.lib.pagesizes import letter, A4
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib import colors
 
-            # Converte HTML in PDF (richiede librerie aggiuntive come weasyprint)
-            try:
-                import weasyprint
-                weasyprint.HTML(filename=str(temp_html_path)).write_pdf(str(output_path))
-            except ImportError:
-                logger.warning("weasyprint not available, creating placeholder PDF")
-                # Crea un PDF semplice con reportlab se disponibile
-                try:
-                    from reportlab.pdfgen import canvas
-                    from reportlab.lib.pagesizes import letter
+            # Crea documento
+            doc = SimpleDocTemplate(str(output_path), pagesize=A4)
+            styles = getSampleStyleSheet()
+            story = []
 
-                    c = canvas.Canvas(str(output_path), pagesize=letter)
-                    c.drawString(100, 750, "AGID Security Assessment Report")
-                    c.drawString(100, 720, f"Generated: {report_data['metadata']['report_generated']}")
-                    c.drawString(100, 690, f"Target: {report_data['executive_summary']['target_system']}")
-                    c.drawString(100, 660, f"Risk Level: {report_data['executive_summary']['overall_risk_level']}")
-                    c.drawString(100, 630, f"Success Rate: {report_data['executive_summary']['success_rate']}%")
-                    c.drawString(100, 600, "For detailed results, please use HTML or JSON format.")
-                    c.save()
-                except ImportError:
-                    logger.error("Neither weasyprint nor reportlab available for PDF generation")
-                    raise ImportError("PDF generation requires weasyprint or reportlab")
+            # Titolo
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=24,
+                spaceAfter=30,
+                alignment=1  # Center
+            )
+            story.append(Paragraph("Security Assessment Report", title_style))
+            story.append(Spacer(1, 20))
 
-            # Pulisce il file temporaneo
-            os.unlink(temp_html_path)
+            # Executive Summary
+            story.append(Paragraph("Executive Summary", styles['Heading2']))
+            exec_summary = report_data.get("executive_summary", {})
 
-            logger.info(f"PDF report generated: {output_path}")
+            summary_data = [
+                ["Risk Level", exec_summary.get("overall_risk_level", "N/A")],
+                ["Total Checks", str(exec_summary.get("total_checks", 0))],
+                ["Passed Checks", str(exec_summary.get("passed_checks", 0))],
+                ["Failed Checks", str(exec_summary.get("failed_checks", 0))],
+                ["Critical Issues", str(exec_summary.get("critical_issues", 0))]
+            ]
+
+            summary_table = Table(summary_data)
+            summary_table.setStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 14),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ])
+            story.append(summary_table)
+            story.append(Spacer(1, 20))
+
+            # Compliance Summary
+            story.append(Paragraph("Compliance Summary", styles['Heading2']))
+            compliance_data = report_data.get("compliance_summary", {})
+
+            compliance_table_data = [["Level", "Score", "Status"]]
+            for level in ["basic", "standard", "advanced"]:
+                level_data = compliance_data.get(f"{level}_compliance", {})
+                compliance_table_data.append([
+                    level.title(),
+                    f"{level_data.get('compliance_percentage', 0):.1f}%",
+                    "✓" if level_data.get('compliance_percentage', 0) >= 80 else "✗"
+                ])
+
+            compliance_table = Table(compliance_table_data)
+            compliance_table.setStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ])
+            story.append(compliance_table)
+            story.append(Spacer(1, 20))
+
+            # Recommendations
+            recommendations = report_data.get("recommendations", [])
+            if recommendations:
+                story.append(Paragraph("Top Recommendations", styles['Heading2']))
+                for i, rec in enumerate(recommendations[:5]):  # Top 5
+                    rec_text = f"{i + 1}. [{rec.get('priority', 'Medium')}] {rec.get('description', 'N/A')}"
+                    story.append(Paragraph(rec_text, styles['Normal']))
+                    story.append(Spacer(1, 6))
+
+            # Genera PDF
+            doc.build(story)
+            logger.info(f"PDF report generated with reportlab: {output_path}")
             return output_path
 
         except Exception as e:
-            logger.error(f"Error generating PDF report: {str(e)}")
+            logger.error(f"Error generating PDF with reportlab: {str(e)}")
+            raise
+
+    def _generate_simple_pdf(self, report_data: Dict[str, Any], output_path: Path) -> Path:
+        """Crea un PDF semplice quando nessuna libreria PDF è disponibile."""
+        try:
+            # Crea un file di testo che simula un PDF
+            with open(output_path, 'w') as f:
+                f.write("SECURITY ASSESSMENT REPORT\n")
+                f.write("=" * 50 + "\n\n")
+
+                # Executive Summary
+                exec_summary = report_data.get("executive_summary", {})
+                f.write("EXECUTIVE SUMMARY\n")
+                f.write("-" * 20 + "\n")
+                f.write(f"Risk Level: {exec_summary.get('overall_risk_level', 'N/A')}\n")
+                f.write(f"Total Checks: {exec_summary.get('total_checks', 0)}\n")
+                f.write(f"Passed: {exec_summary.get('passed_checks', 0)}\n")
+                f.write(f"Failed: {exec_summary.get('failed_checks', 0)}\n\n")
+
+                # Compliance
+                f.write("COMPLIANCE SUMMARY\n")
+                f.write("-" * 20 + "\n")
+                compliance = report_data.get("compliance_summary", {})
+                f.write(f"Overall Score: {compliance.get('overall_compliance_score', 0):.1f}%\n\n")
+
+                # Note
+                f.write("NOTE: This is a text-based report.\n")
+                f.write("Install 'reportlab' or 'weasyprint' for proper PDF generation.\n")
+                f.write("Command: pip install reportlab\n")
+
+            logger.warning(f"Created simple text-based PDF: {output_path}")
+            return output_path
+
+        except Exception as e:
+            logger.error(f"Error creating simple PDF: {str(e)}")
             raise
 
     def _generate_xml_report(self, report_data: Dict[str, Any], output_path: Path) -> Path:

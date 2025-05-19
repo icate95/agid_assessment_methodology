@@ -19,6 +19,27 @@ app = typer.Typer(
     no_args_is_help=True
 )
 
+# Aggiungi callback per --version globale
+def version_callback(value: bool):
+    if value:
+        try:
+            from .. import __version__
+            console.print(f"AGID Assessment Methodology v{__version__}")
+        except ImportError:
+            console.print("AGID Assessment Methodology v0.1.0")
+        raise typer.Exit()
+
+# Aggiungi opzione globale --version
+@app.callback()
+def main(
+    version: Optional[bool] = typer.Option(
+        None, "--version", callback=version_callback,
+        help="Show version and exit"
+    )
+):
+    """AGID Assessment Methodology - Security Assessment Tool."""
+    pass
+
 # Resto del codice rimane uguale...
 
 @app.command()
@@ -68,10 +89,10 @@ def scan(
         "json", "--format", "-f", help="Output format (json, csv, html, xml, pdf)"
     ),
     categories: Optional[List[str]] = typer.Option(
-        None, "--categories", "-cat", help="Specific categories to scan"
+        None, "--categories", "-cat", help="Specific categories to scan (can be used multiple times)"
     ),
     checks: Optional[List[str]] = typer.Option(
-        None, "--checks", "-ch", help="Specific checks to run"
+        None, "--checks", "-ch", help="Specific checks to run (can be used multiple times)"
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose output"
@@ -126,6 +147,7 @@ def scan(
             specific_checks=checks
         )
 
+        print(results)
         # Generate output if requested
         if output:
             from ..utils.reporting import ReportGenerator
@@ -316,15 +338,40 @@ def _display_scan_summary(results: dict):
     table.add_column("Checks", style="blue")
     table.add_column("Status", style="green")
 
-    for category, checks in results.items():
-        if category == "scan_metadata":
-            continue
+    # Rimuovi scan_metadata dai risultati per il summary
+    summary_results = {k: v for k, v in results.items() if k != "scan_metadata"}
+    print(results)
+    for category, checks in summary_results.items():
+        if isinstance(checks, dict):
+            # Se è un dizionario di checks, conta gli elementi
+            check_count = len(checks)
 
-        check_count = len(checks) if isinstance(checks, dict) else 1
+            # Determina lo status basato sui risultati
+            if check_count > 0:
+                # Controlla se ci sono check con status specifici
+                statuses = []
+                for check_name, check_data in checks.items():
+                    if isinstance(check_data, dict) and "status" in check_data:
+                        statuses.append(check_data["status"])
 
-        # Simple status determination
-        status = "✅ Pass" if check_count > 0 else "❌ No checks"
+                # Determina status complessivo
+                if statuses:
+                    if any(s in ["fail", "error"] for s in statuses):
+                        status = "❌ Issues Found"
+                    elif any(s == "warning" for s in statuses):
+                        status = "⚠️ Warnings"
+                    else:
+                        status = "✅ Pass"
+                else:
+                    status = "✅ Pass"
+            else:
+                status = "❌ No checks"
+        else:
+            # Se non è un dizionario, considera come singolo check
+            check_count = 1
+            status = "✅ Pass"
 
+        print(category)
         table.add_row(category, str(check_count), status)
 
     console.print(table)
@@ -339,31 +386,57 @@ def _interactive_config_setup() -> dict:
     # Logging configuration
     console.print("\n[bold]Logging Configuration[/bold]")
     log_level = typer.prompt(
-        "Log level (DEBUG, INFO, WARNING, ERROR)",
-        default="INFO"
+        "Log level",
+        default="INFO",
+        show_default=True
     )
     config["logging"]["level"] = log_level.upper()
 
-    file_logging = typer.confirm("Enable file logging?", default=True)
+    file_logging = typer.confirm(
+        "Enable file logging?",
+        default=True,
+        show_default=True
+    )
     config["logging"]["file_logging"] = file_logging
 
     if file_logging:
+        # Usa il percorso corretto per il log
+        default_log_path = Path.home() / ".agid_assessment" / "logs" / "assessment.log"
         log_file = typer.prompt(
             "Log file path",
-            default=str(Path.home() / ".agid_assessment" / "logs" / "assessment.log")
+            default=str(default_log_path),
+            show_default=True
         )
         config["logging"]["log_file"] = log_file
 
+        # Assicurati che la directory del log esista
+        log_dir = Path(log_file).parent
+        log_dir.mkdir(parents=True, exist_ok=True)
+
     # Scan configuration
     console.print("\n[bold]Scan Configuration[/bold]")
-    timeout = typer.prompt("Scan timeout (seconds)", default=300, type=int)
+    timeout = typer.prompt(
+        "Scan timeout (seconds)",
+        default=300,
+        type=int,
+        show_default=True
+    )
     config["scan"]["timeout"] = timeout
 
-    parallel = typer.confirm("Enable parallel scanning?", default=True)
+    parallel = typer.confirm(
+        "Enable parallel scanning?",
+        default=True,
+        show_default=True
+    )
     config["scan"]["parallel"] = parallel
 
     if parallel:
-        max_workers = typer.prompt("Max worker threads", default=4, type=int)
+        max_workers = typer.prompt(
+            "Max worker threads",
+            default=4,
+            type=int,
+            show_default=True
+        )
         config["scan"]["max_workers"] = max_workers
 
     # Check categories
@@ -372,7 +445,11 @@ def _interactive_config_setup() -> dict:
 
     categories = []
     for category in ["system", "authentication", "network", "logging"]:
-        if typer.confirm(f"Enable {category} checks?", default=True):
+        if typer.confirm(
+            f"Enable {category} checks?",
+            default=True,
+            show_default=True
+        ):
             categories.append(category)
 
     config["checks"]["enabled_categories"] = categories

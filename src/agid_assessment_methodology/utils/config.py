@@ -354,7 +354,7 @@ def ensure_config_dir() -> Path:
     config_dir = get_user_config_dir()
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir
-# Aggiungere questa funzione al file src/agid_assessment_methodology/utils/config.py
+
 
 def create_default_config() -> Dict[str, Any]:
     """
@@ -414,6 +414,8 @@ def get_user_config_dir() -> Path:
     # Crea la directory se non esiste
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir
+
+
 def ensure_config_dir() -> Path:
     """
     Assicura che la directory di configurazione esista.
@@ -426,7 +428,60 @@ def ensure_config_dir() -> Path:
     return config_dir
 
 
+def create_default_config() -> Dict[str, Any]:
+    """
+    Crea una configurazione di default.
 
+    Returns:
+        Dizionario con la configurazione di default
+    """
+    return {
+        "logging": {
+            "level": "INFO",
+            "file_logging": True,
+            "log_file": str(Path.home() / ".agid_assessment" / "logs" / "assessment.log"),
+            "max_file_size": "10MB",
+            "backup_count": 5,
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        },
+        "scan": {
+            "timeout": 300,
+            "parallel": True,
+            "max_workers": 4,
+            "retry_attempts": 3,
+            "retry_delay": 1.0
+        },
+        "checks": {
+            "enabled_categories": ["system", "authentication", "network", "logging"],
+            "excluded_checks": [],
+            "custom_checks_path": None
+        },
+        "reporting": {
+            "include_raw_data": True,
+            "include_system_info": True,
+            "default_format": "html",
+            "output_directory": str(Path.home() / ".agid_assessment" / "reports")
+        },
+        "credentials": {
+            "store_encrypted": True,
+            "use_system_credentials": True
+        }
+    }
+
+
+def get_user_config_dir() -> Path:
+    """
+    Ottiene la directory di configurazione dell'utente.
+
+    Returns:
+        Path della directory di configurazione
+    """
+    # Usa una struttura semplificata per tutte le piattaforme
+    config_dir = Path.home() / ".agid_assessment"
+
+    # Crea la directory se non esiste
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir
 
 if __name__ == "__main__":
     # Esempio di utilizzo

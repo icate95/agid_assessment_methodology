@@ -153,8 +153,7 @@ class Scanner:
 
     # Aggiungere questo metodo alla classe Scanner in src/agid_assessment_methodology/core/scanner.py
 
-    def scan(self, enabled_categories: Optional[List[str]] = None, specific_checks: Optional[List[str]] = None) -> Dict[
-        str, Any]:
+    def scan(self, enabled_categories: Optional[List[str]] = None, specific_checks: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Esegue una scansione del sistema con filtri opzionali.
 
@@ -192,21 +191,21 @@ class Scanner:
             check_results = registry.execute_checks(context)
 
         # Converte i risultati in formato compatibile con Assessment
-        results = {}
-        for check_id, check_result in check_results.items():
-            results[check_id] = check_result.to_dict()
-
-        # Raggruppa per categoria se possibile
+        # E categorizza correttamente i risultati
         categorized_results = {}
-        for check_id, result in results.items():
-            category = result.get('category', 'unknown')
+
+        for check_id, check_result in check_results.items():
+            result_dict = check_result.to_dict()
+
+            # Ottieni la categoria dal check result
+            category = result_dict.get('category', 'system')  # default 'system' invece di 'unknown'
+
+            # Se la categoria non esiste ancora, creala
             if category not in categorized_results:
                 categorized_results[category] = {}
-            categorized_results[category][check_id] = result
 
-        # Se non ci sono categorie, usa la struttura originale
-        if not categorized_results:
-            categorized_results = results
+            # Aggiungi il risultato alla categoria appropriata
+            categorized_results[category][check_id] = result_dict
 
         # Aggiungi timestamp e metadati
         from datetime import datetime
@@ -215,7 +214,9 @@ class Scanner:
             "target": self.target,
             "scanner_version": "0.1.0",
             "checks_executed": len(check_results),
-            "os_type": context["os_type"]
+            "os_type": context["os_type"],
+            "enabled_categories": enabled_categories,
+            "specific_checks": specific_checks
         }
 
         logger.info(f"Scan completed for target: {self.target}")

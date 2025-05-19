@@ -1,9 +1,10 @@
-"""Modulo CLI per AGID Assessment Methodology.
-
-Questo modulo contiene l'interfaccia a riga di comando per il framework
-di assessment di sicurezza.
-"""
+# File: src/agid_assessment_methodology/cli/__init__.py
+# Aggiungere alias per comando breve
 
 from .main import app
 
-__all__ = ["app"]
+# Crea alias per comando breve
+agid_app = app
+
+# Registra entry points per entrambi i nomi
+__all__ = ["app", "agid_app"]
