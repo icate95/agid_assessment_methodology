@@ -10,6 +10,10 @@ from enum import Enum
 import tempfile
 import os
 
+# from reportlab.pdfgen import canvas as reportlab_canvas
+# import reportlab.pdfgen.canvas
+from reportlab.pdfgen import canvas as canvas
+
 logger = logging.getLogger(__name__)
 
 
@@ -48,10 +52,6 @@ def _get_pdf_library():
             pass
 
     return None
-
-
-
-
 
 class ExportFormat(Enum):
     """Formati di esportazione supportati."""

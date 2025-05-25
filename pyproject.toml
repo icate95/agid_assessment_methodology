@@ -35,6 +35,7 @@ dependencies = [
     "jsonschema>=4.0.0", # Per validazione configurazione
     "weasyprint>=56.0",  # Preferred for PDF generation
     "reportlab>=3.5.0",  # Fallback for PDF generation
+    "schedule>=1.1.0",
 ]
 requires-python = ">=3.8"
 
@@ -86,11 +87,21 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "integration: marks tests as integration tests",
+    "slow: marks tests as slow",
+    "network: marks tests that require network access",
+    "windows: marks tests that require Windows OS",
+    "linux: marks tests that require Linux OS",
+    "macos: marks tests that require macOS"
+]
 addopts = [
     "--cov=agid_assessment_methodology",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--strict-markers",
+    "-v",
+    "--tb=short"
 ]
 
 # Configurazione per mypy

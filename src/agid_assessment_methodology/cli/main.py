@@ -1,7 +1,7 @@
 import logging
 import sys
 from pathlib import Path
-from typing import List, Optional  # <-- Aggiungere Optional qui
+from typing import Dict, List, Optional
 import traceback
 
 import typer
@@ -218,7 +218,7 @@ def configure(
 @app.command()
 def list_checks(
     category: Optional[str] = typer.Option(
-        None, "--category", "-c", help="Filter by category"
+        None, "--category", "-c", help="Filter checks by category"
     ),
     os_type: Optional[str] = typer.Option(
         None, "--os", help="Filter by OS type (windows, linux, macos)"
@@ -226,53 +226,233 @@ def list_checks(
 ):
     """List available security checks."""
     try:
+        # Debug imports
+        import sys
+        import importlib
+
+        console.print("[bold]Python Path:[/bold]")
+        for path in sys.path:
+            console.print(path)
+
+        console.print("\n[bold]Checking imports...[/bold]")
+
+        # Forza l'importazione dei moduli
+        modules_to_check = [
+            'agid_assessment_methodology.checks.system.system_info',
+            'agid_assessment_methodology.checks.system.basic_security',
+            'agid_assessment_methodology.checks.authentication.password_policy',
+            'agid_assessment_methodology.checks.network.firewall',
+            'agid_assessment_methodology.checks.network.open_ports',
+            'agid_assessment_methodology.checks.network.ssl_tls',
+            'agid_assessment_methodology.checks.malware.antivirus',
+            'agid_assessment_methodology.checks.malware.definitions',
+            'agid_assessment_methodology.checks.malware.quarantine'
+        ]
+
+        for module_name in modules_to_check:
+            try:
+                module = importlib.import_module(module_name)
+                console.print(f"[green]Imported:[/green] {module_name}")
+            except ImportError as e:
+                console.print(f"[red]Failed to import:[/red] {module_name}")
+                console.print(f"Error: {e}")
+
+        # Importa il registro dei controlli
         from ..checks.registry import CheckRegistry
 
         registry = CheckRegistry()
-        checks = registry.get_all_checks()
+        checks = registry.get_registry_info()
 
-        # Apply filters
+        console.print(f"\n[bold]Total Checks in Registry:[/bold] {len(registry._checks)}")
+
+        for check_id, check in registry._checks.items():
+            console.print(f"[yellow]Check:[/yellow] {check_id}")
+            console.print(f"  Name: {check.name}")
+            console.print(f"  Category: {check.category}")
+            console.print(f"  Severity: {check.severity}")
+            console.print(f"  Supported OS: {check.supported_os}")
+            console.print()
+        # Se non ci sono controlli registrati, mostra tutti i controlli disponibili
+        if not checks.get('available_checks'):
+            console.print("[yellow]No checks are registered. Showing all available checks in the system.[/yellow]")
+
+        # Se nessun filtro è stato applicato, mostra tutti i controlli
+        available_checks = checks.get('available_checks', [])
+
+        # Applica filtri se specificati
         if category:
-            checks = {k: v for k, v in checks.items() if k == category}
+            available_checks = [
+                check for check in available_checks
+                if check['category'].lower() == category.lower()
+            ]
 
         if os_type:
-            filtered_checks = {}
-            for cat, check_list in checks.items():
-                filtered_list = [c for c in check_list if c.is_applicable(os_type)]
-                if filtered_list:
-                    filtered_checks[cat] = filtered_list
-            checks = filtered_checks
+            available_checks = [
+                check for check in available_checks
+                if os_type.lower() in [os.lower() for os in check['supported_os']]
+            ]
 
-        # Display results
-        if not checks:
-            console.print("[yellow]No checks found matching the criteria.")
-            return
+        # Se non ci sono check dopo i filtri, mostra un messaggio
+        if not available_checks:
+            console.print("[yellow]No checks found matching the specified criteria.[/yellow]")
 
-        for category_name, check_list in checks.items():
-            table = Table(title=f"Category: {category_name}")
-            table.add_column("Check ID", style="cyan")
-            table.add_column("Name", style="green")
-            table.add_column("Severity", style="yellow")
-            table.add_column("OS Support", style="blue")
+            # Se nessun filtro è stato applicato, mostra tutti i controlli disponibili nel sistema
+            if not category and not os_type:
+                console.print("\n[bold]All Available Checks:[/bold]")
+                available_checks = registry.get_registry_info().get('available_checks', [])
 
-            for check in check_list:
-                os_support = ", ".join(check.supported_os)
-                table.add_row(
-                    check.check_id,
-                    check.name,
-                    check.severity,
-                    os_support
-                )
+        # Crea una tabella per visualizzare i controlli
+        table = Table(title="Security Checks")
+        table.add_column("Check ID", style="cyan")
+        table.add_column("Name", style="green")
+        table.add_column("Category", style="yellow")
+        table.add_column("Severity", style="red")
+        table.add_column("Supported OS", style="blue")
 
-            console.print(table)
-            console.print()
+        for check in available_checks:
+            table.add_row(
+                check.get('id', 'N/A'),
+                check.get('name', 'N/A'),
+                check.get('category', 'N/A'),
+                check.get('severity', 'N/A'),
+                ", ".join(check.get('supported_os', [])) if check.get('supported_os') else 'N/A'
+            )
+
+        # Stampa la tabella
+        console.print(table)
+
+        # Stampa il numero totale di controlli
+        console.print(f"\n[bold]Total Checks:[/bold] {len(available_checks)}")
 
     except Exception as e:
-        logger.error(f"List checks error: {str(e)}")
-        console.print(f"[red]Failed to list checks: {str(e)}")
+        console.print(f"[red]Critical Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise typer.Exit(code=1)
+
+def get_registry_info(self) -> Dict[str, any]:
+    """
+    Ottiene informazioni sul registro.
+
+    Returns:
+        Informazioni sul registro
+    """
+    # Se non ci sono controlli, restituisci una lista vuota ma con una struttura consistente
+    if not self._checks:
+        return {
+            "total_checks": 0,
+            "categories": {},
+            "available_checks": []
+        }
+
+    return {
+        "total_checks": len(self._checks),
+        "categories": {
+            category: len(checks)
+            for category, checks in self._checks_by_category.items()
+        },
+        "available_checks": [
+            {
+                "id": check.id,
+                "name": check.name,
+                "category": check.category,
+                "severity": check.severity,
+                "supported_os": check.supported_os
+            }
+            for check in self._checks.values()
+        ]
+    }
+
+@app.command()
+def list_categories(
+    show_counts: bool = typer.Option(
+        False, "--counts", "-c", help="Show check counts for each category"
+    )
+):
+    """List all available check categories."""
+    try:
+        from ..checks.registry import CheckRegistry
+
+        registry = CheckRegistry()
+
+        # Verifica se il registry è vuoto
+        if len(registry) == 0:
+            console.print("[yellow]No checks are registered. Make sure checks are properly loaded.[/yellow]")
+            console.print("[dim]Tip: Check if your check modules are being imported correctly.[/dim]")
+            return
+
+        categories = registry.get_categories()
+
+        if not categories:
+            console.print("[yellow]No categories found.")
+            return
+
+        table = Table(title="Available Check Categories")
+        table.add_column("Category", style="cyan")
+        table.add_column("Description", style="green")
+
+        if show_counts:
+            table.add_column("Check Count", style="blue")
+
+        # Definisci descrizioni per le categorie (puoi personalizzarle)
+        category_descriptions = {
+            "system": "System configuration and security checks",
+            "authentication": "Authentication and authorization checks",
+            "network": "Network security and configuration checks",
+            "logging": "Logging and monitoring configuration checks",
+            "compliance": "Compliance and regulatory checks",
+            "encryption": "Encryption and cryptographic checks"
+        }
+
+        for category_name in sorted(categories):
+            description = category_descriptions.get(category_name, "Security checks")
+            check_count = len(registry.get_checks_by_category(category_name))
+
+            if show_counts:
+                table.add_row(
+                    category_name,
+                    description,
+                    str(check_count)
+                )
+            else:
+                table.add_row(category_name, description)
+
+        console.print(table)
+        console.print(f"\n[dim]Total categories: {len(categories)}[/dim]")
+
+        if not show_counts:
+            console.print("[dim]Use --counts to see the number of checks per category[/dim]")
+
+    except Exception as e:
+        logger.error(f"List categories error: {str(e)}")
+        console.print(f"[red]Failed to list categories: {str(e)}")
         raise typer.Exit(1)
 
+# Comando di debug per verificare lo stato del registry
+@app.command()
+def debug_registry():
+    """Debug command to check registry status."""
+    try:
+        from ..checks.registry import CheckRegistry
 
+        registry = CheckRegistry()
+        info = registry.get_registry_info()
+
+        console.print("[bold blue]Registry Debug Information[/bold blue]")
+        console.print(f"Total checks: {info['total_checks']}")
+        console.print(f"Categories: {len(info['categories'])}")
+
+        if info['categories']:
+            console.print("\nCategories breakdown:")
+            for cat, count in info['categories'].items():
+                console.print(f"  - {cat}: {count} checks")
+        else:
+            console.print("[yellow]No categories found - registry appears to be empty[/yellow]")
+            console.print("[dim]This suggests that checks are not being registered properly.[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Debug failed: {str(e)}")
+        raise typer.Exit(1)
 @app.command()
 def report(
     scan_file: Path = typer.Argument(help="Path to scan results file"),
@@ -455,6 +635,53 @@ def _interactive_config_setup() -> dict:
     config["checks"]["enabled_categories"] = categories
 
     return config
+
+
+@app.command()
+def schedule(
+        target: str = typer.Argument(..., help="Target to schedule assessment for"),
+        frequency: str = typer.Option("daily", help="Frequency of assessment"),
+        time: str = typer.Option("02:00", help="Time of day for assessment"),
+        categories: Optional[List[str]] = typer.Option(None, help="Specific check categories"),
+        output: Optional[Path] = typer.Option(None, help="Output directory for reports")
+):
+    """Schedule recurring security assessments."""
+    from ..scheduler import AssessmentScheduler
+
+    scheduler = AssessmentScheduler()
+    task_id = scheduler.schedule_assessment(
+        target,
+        frequency=frequency,
+        time_of_day=time,
+        categories=categories,
+        output_dir=output
+    )
+
+    console.print(f"[green]Assessment scheduled with ID: {task_id}")
+    scheduler.start()
+
+
+@app.command()
+def list_scheduled():
+    """List scheduled security assessments."""
+    from ..scheduler import AssessmentScheduler
+
+    scheduler = AssessmentScheduler()
+    tasks = scheduler.list_scheduled_tasks()
+
+    table = Table(title="Scheduled Assessments")
+    table.add_column("Target", style="cyan")
+    table.add_column("Frequency", style="green")
+    table.add_column("Time", style="yellow")
+
+    for task in tasks:
+        table.add_row(
+            task['target'],
+            task['frequency'],
+            task['time']
+        )
+
+    console.print(table)
 
 
 # Entry point for CLI

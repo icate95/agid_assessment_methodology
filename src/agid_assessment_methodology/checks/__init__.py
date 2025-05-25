@@ -8,6 +8,11 @@ Questo modulo contiene tutti i controlli di sicurezza organizzati per categoria:
 - backup: controlli sui backup (future)
 """
 
+
+import logging
+logger = logging.getLogger(__name__)
+
+
 from .base import BaseCheck, CheckResult, CheckStatus
 from .registry import CheckRegistry
 
@@ -67,3 +72,18 @@ __all__ = [
     "DefinitionsCheck",
     "QuarantineCheck",
 ]
+
+# debug per capire se i check sono registrati correttamente
+logger.setLevel(logging.DEBUG)  # Imposta il livello di log a DEBUG
+
+logger.info(f"Registered checks: {len(registry._checks)} checks")
+logger.info("Registered checks details:")
+for check in registry._checks.values():
+    logger.info(f"- {check.id}: {check.name} (Category: {check.category})")
+
+
+logger.info(f"Importing checks module")
+logger.info(f"Registered checks: {len(registry._checks)} checks")
+logger.info("Registered checks details:")
+for check_id, check in registry._checks.items():
+    logger.info(f"- {check_id}: {check.name} (Category: {check.category})")

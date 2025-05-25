@@ -17,6 +17,9 @@ class CheckRegistry:
         self._checks_by_category: Dict[str, List[BaseCheck]] = defaultdict(list)
         self._check_classes: Dict[str, Type[BaseCheck]] = {}
 
+        # Log all'inizializzazione
+        logger.debug("CheckRegistry initialized")
+
     def register(self, check: BaseCheck) -> None:
         """
         Registra un controllo.
@@ -24,14 +27,17 @@ class CheckRegistry:
         Args:
             check: Istanza del controllo da registrare
         """
-        if check.id in self._checks:
-            logger.warning(f"Check {check.id} already registered, overwriting")
+        try:
+            if check.id in self._checks:
+                logger.warning(f"Check {check.id} already registered, overwriting")
 
-        self._checks[check.id] = check
-        self._checks_by_category[check.category].append(check)
-        self._check_classes[check.id] = type(check)
+            self._checks[check.id] = check
+            self._checks_by_category[check.category].append(check)
+            self._check_classes[check.id] = type(check)
 
-        logger.debug(f"Registered check: {check.id} (category: {check.category})")
+            logger.info(f"Registered check: {check.id} (category: {check.category})")
+        except Exception as e:
+            logger.error(f"Error registering check {check.id}: {e}")
 
     def get_check(self, check_id: str) -> Optional[BaseCheck]:
         """
@@ -57,9 +63,26 @@ class CheckRegistry:
         """
         return self._checks_by_category.get(category, [])
 
-    def get_all_checks(self) -> List[BaseCheck]:
+    # def get_all_checks(self) -> List[BaseCheck]:
+    #     """
+    #     Ottiene tutti i controlli registrati.
+    #
+    #     Returns:
+    #         Lista di tutti i controlli
+    #     """
+    #     return list(self._checks.values())
+    def get_all_checks(self) -> Dict[str, List[BaseCheck]]:
         """
-        Ottiene tutti i controlli registrati.
+        Ottiene tutti i controlli registrati organizzati per categoria.
+
+        Returns:
+            Dizionario con categorie come chiavi e liste di controlli come valori
+        """
+        return dict(self._checks_by_category)
+
+    def get_all_checks_list(self) -> List[BaseCheck]:
+        """
+        Ottiene tutti i controlli registrati come lista.
 
         Returns:
             Lista di tutti i controlli

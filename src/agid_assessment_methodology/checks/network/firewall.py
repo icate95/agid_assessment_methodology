@@ -30,6 +30,10 @@ class FirewallCheck(BaseCheck):
         self.severity = "high"
         self.supported_os = ["windows", "linux", "macos"]
 
+    def is_applicable(self, context: Dict[str, Any]) -> bool:
+        os_type = context.get("os_type", "").lower()
+        return os_type in ["windows", "linux", "macos"]
+
     def execute(self, context: Dict[str, Any]) -> CheckResult:
         """
         Execute the firewall check.

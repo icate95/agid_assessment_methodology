@@ -231,9 +231,9 @@ class Assessment:
 
     def generate_report(
         self,
-        output_path: str,
-        format_type: str = "json",
-        include_raw_data: bool = True
+        output_path,
+        format_type = "json",
+        include_raw_data = True
     ) -> Path:
         """
         Genera un report dell'assessment.
@@ -256,11 +256,12 @@ class Assessment:
             "recommendations": self.assessment_results.get("recommendations", []),
             "details": self.scan_results,
             "scan_metadata": self.scan_results.get("scan_metadata", {}),
-            "compliance": {
-                "basic": self.check_compliance("basic"),
-                "standard": self.check_compliance("standard"),
-                "advanced": self.check_compliance("advanced")
-            }
+            # "compliance": {
+            #     "basic": self.check_compliance("basic"),
+            #     "standard": self.check_compliance("standard"),
+            #     "advanced": self.check_compliance("advanced")
+            # }
+            "compliance": self.check_compliance("basic")
         }
 
         # Genera il report
