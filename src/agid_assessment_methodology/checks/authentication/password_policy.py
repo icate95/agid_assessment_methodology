@@ -1,438 +1,640 @@
-"""Controllo per verificare le policy delle password."""
+"""
+Modulo per il controllo delle policy delle password.
 
-import subprocess
+Questo modulo fornisce un meccanismo di verifica completo per le policy delle
+password su diversi sistemi operativi, con supporto per Windows, Linux e macOS.
+"""
+
+import os
 import re
-from typing import Dict, Any
+import json
+import tempfile
+import subprocess
+import platform
+import logging
+from typing import Dict, Any, List, Optional, Tuple
+
 from ..base import BaseCheck, CheckResult, CheckStatus
 
 
 class PasswordPolicyCheck(BaseCheck):
-    """Controllo per verificare le policy di sicurezza delle password."""
+    """
+    Classe per la verifica delle policy delle password.
+
+    Effettua controlli dettagliati su:
+    - Lunghezza delle password
+    - Complessità
+    - Scadenza
+    - Meccanismi di blocco account
+    """
 
     def __init__(self):
+        """Inizializza il controllo delle password con requisiti di sicurezza."""
         super().__init__()
         self.id = "password_policy"
-        self.name = "Password Policy Check"
-        self.description = "Verifica le impostazioni della policy delle password del sistema"
+        self.name = "Password Policy Security Check"
+        self.description = "Verifica la conformità delle policy delle password agli standard di sicurezza"
         self.category = "authentication"
         self.severity = "high"
         self.supported_os = ["windows", "linux", "macos"]
 
+        # Requisiti minimi di sicurezza per le password
+        self.security_requirements = {
+            "min_length": 12,
+            "max_length": 128,
+            "min_complexity": {
+                "uppercase": True,
+                "lowercase": True,
+                "numbers": True,
+                "special_chars": True
+            },
+            "max_age_days": 90,
+            "min_age_days": 1,
+            "password_history": 5,
+            "lockout_threshold": 5,
+            "lockout_duration_minutes": 30
+        }
+
     def execute(self, context: Dict[str, Any]) -> CheckResult:
         """
-        Esegue la verifica delle policy delle password.
+        Esegue il controllo delle policy delle password.
 
         Args:
-            context: Contesto di esecuzione
+            context: Contesto di esecuzione contenente informazioni di sistema
 
         Returns:
-            Risultato del controllo delle policy password
+            Risultato del controllo delle password
         """
-        issues = []
-        recommendations = []
-        policy_checks = {}
-        os_type = context.get("os_type", "unknown")
+        os_type = context.get('os_type', platform.system().lower())
 
         try:
-            if os_type == "windows":
-                policy_checks = self._check_windows_password_policy()
-            elif os_type == "linux":
-                policy_checks = self._check_linux_password_policy()
-            elif os_type == "macos":
-                policy_checks = self._check_macos_password_policy()
+            # Seleziona il metodo di controllo specifico per il sistema operativo
+            password_policy_methods = {
+                'windows': self._check_windows_password_policy,
+                'linux': self._check_linux_password_policy,
+                'darwin': self._check_macos_password_policy
+            }
+
+            # Esegui il metodo specifico per l'OS
+            if os_type in password_policy_methods:
+                return password_policy_methods[os_type]()
             else:
                 return CheckResult(
                     status=CheckStatus.SKIPPED,
-                    message=f"Password policy check not supported for {os_type}"
+                    message=f"Password policy check non supportato per {os_type}"
                 )
 
-            # Analizza i risultati e genera issues/recommendations
-            issues, recommendations = self._analyze_policy_results(policy_checks, os_type)
-
-            # Calcola il punteggio
-            score = self._calculate_policy_score(policy_checks)
-
-            # Determina lo status
-            if not policy_checks:
-                status = CheckStatus.ERROR
-            elif issues:
-                critical_issues = [i for i in issues if i.get("severity") == "critical"]
-                high_issues = [i for i in issues if i.get("severity") == "high"]
-                if critical_issues:
-                    status = CheckStatus.FAIL
-                elif high_issues:
-                    status = CheckStatus.WARNING
-                else:
-                    status = CheckStatus.WARNING
-            else:
-                status = CheckStatus.PASS
-
-            return CheckResult(
-                status=status,
-                message=f"Password policy check completed with {len(issues)} issues found",
-                details=policy_checks,
-                issues=issues,
-                recommendations=recommendations,
-                score=score
-            )
-
         except Exception as e:
+            self._logger.error(f"Errore durante il controllo delle password policy: {str(e)}")
             return CheckResult(
                 status=CheckStatus.ERROR,
-                message=f"Error during password policy check: {str(e)}",
-                details={"error": str(e)}
+                message=f"Errore nel controllo delle password policy: {str(e)}"
             )
 
-    def _check_windows_password_policy(self) -> Dict[str, Any]:
-        """Controlla le policy delle password su Windows."""
-        policy = {}
+    def _check_windows_password_policy(self) -> CheckResult:
+        """
+        Controlla le policy delle password su sistemi Windows.
 
+        Returns:
+            Risultato del controllo delle password per Windows
+        """
         try:
-            # Usa net accounts per ottenere le policy
-            result = subprocess.run(
+            # Usa net accounts per ottenere informazioni di base
+            net_accounts_result = subprocess.run(
                 ['net', 'accounts'],
-                capture_output=True, text=True
+                capture_output=True, text=True, timeout=10
             )
 
-            if result.returncode == 0:
-                lines = result.stdout.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if 'Minimum password length' in line:
-                        match = re.search(r'(\d+)', line)
-                        policy['min_length'] = int(match.group(1)) if match else None
-                    elif 'Maximum password age' in line:
-                        if 'Never' in line:
-                            policy['max_age_days'] = None
-                        else:
-                            match = re.search(r'(\d+)', line)
-                            policy['max_age_days'] = int(match.group(1)) if match else None
-                    elif 'Minimum password age' in line:
-                        match = re.search(r'(\d+)', line)
-                        policy['min_age_days'] = int(match.group(1)) if match else None
-                    elif 'Password history length' in line:
-                        match = re.search(r'(\d+)', line)
-                        policy['history_length'] = int(match.group(1)) if match else None
-                    elif 'Lockout threshold' in line:
-                        if 'Never' in line:
-                            policy['lockout_threshold'] = None
-                        else:
-                            match = re.search(r'(\d+)', line)
-                            policy['lockout_threshold'] = int(match.group(1)) if match else None
-
-            # Controlla la complexity policy usando secedit
-            try:
-                temp_file = "secedit_output.inf"
+            # Usa secedit per ottenere impostazioni di sicurezza più dettagliate
+            with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
+                secedit_temp = temp_file.name
                 subprocess.run(
-                    ['secedit', '/export', '/cfg', temp_file],
-                    capture_output=True
+                    ['secedit', '/export', '/cfg', secedit_temp],
+                    capture_output=True, timeout=10
                 )
 
-                with open(temp_file, 'r') as f:
-                    content = f.read()
-                    if 'PasswordComplexity = 1' in content:
-                        policy['complexity_enabled'] = True
-                    elif 'PasswordComplexity = 0' in content:
-                        policy['complexity_enabled'] = False
+            # Analizza i risultati
+            policy_details = self._parse_windows_password_policy(
+                net_accounts_result.stdout,
+                secedit_temp
+            )
 
-                import os
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
+            # Rimuovi il file temporaneo
+            os.unlink(secedit_temp)
 
-            except Exception:
-                policy['complexity_enabled'] = None
+            # Valuta la conformità
+            return self._evaluate_password_policy(policy_details)
 
         except Exception as e:
-            self._logger.error(f"Error checking Windows password policy: {e}")
-            policy['error'] = str(e)
+            self._logger.error(f"Errore nel controllo policy Windows: {str(e)}")
+            return CheckResult(
+                status=CheckStatus.FAIL,
+                message=f"Errore nel controllo policy Windows: {str(e)}"
+            )
 
-        return policy
+    def _parse_windows_password_policy(self, net_output: str, secedit_path: str) -> Dict[str, Any]:
+        """
+        Analizza l'output dei comandi Windows per estrarre le policy delle password.
 
-    def _check_linux_password_policy(self) -> Dict[str, Any]:
-        """Controlla le policy delle password su Linux."""
-        policy = {}
+        Args:
+            net_output: Output del comando net accounts
+            secedit_path: Percorso al file temporaneo di secedit
+
+        Returns:
+            Dizionario con i dettagli delle policy
+        """
+        policy_details = {
+            "source": "windows",
+            "min_password_length": None,
+            "max_password_age": None,
+            "min_password_age": None,
+            "password_history": None,
+            "lockout_threshold": None,
+            "complexity_enabled": False
+        }
+
+        # Parsing net accounts
+        for line in net_output.split('\n'):
+            line = line.strip()
+            match_length = re.search(r'Minimum password length:\s*(\d+)', line, re.IGNORECASE)
+            match_max_age = re.search(r'Maximum password age:\s*(\d+)\s*days', line, re.IGNORECASE)
+            match_min_age = re.search(r'Minimum password age:\s*(\d+)\s*day', line, re.IGNORECASE)
+            match_history = re.search(r'Password history length:\s*(\d+)', line, re.IGNORECASE)
+            match_lockout = re.search(r'Lockout threshold:\s*(\d+)', line, re.IGNORECASE)
+
+            if match_length:
+                policy_details["min_password_length"] = int(match_length.group(1))
+            if match_max_age:
+                policy_details["max_password_age"] = int(match_max_age.group(1))
+            if match_min_age:
+                policy_details["min_password_age"] = int(match_min_age.group(1))
+            if match_history:
+                policy_details["password_history"] = int(match_history.group(1))
+            if match_lockout:
+                policy_details["lockout_threshold"] = int(match_lockout.group(1))
+
+        # Parsing secedit per complessità
+        try:
+            with open(secedit_path, 'r') as f:
+                secedit_content = f.read()
+                policy_details["complexity_enabled"] = 'PasswordComplexity = 1' in secedit_content
+
+        except Exception as e:
+            self._logger.warning(f"Errore nel parsing secedit: {str(e)}")
+
+        return policy_details
+
+    def _check_linux_password_policy(self) -> CheckResult:
+        """
+        Controlla le policy delle password su sistemi Linux.
+
+        Returns:
+            Risultato del controllo delle password per Linux
+        """
+        try:
+            # Analizza /etc/login.defs
+            login_defs = self._parse_linux_login_defs()
+
+            # Controlla configurazioni PAM
+            pam_config = self._parse_linux_pam_config()
+
+            # Combina i risultati
+            policy_details = {
+                "source": "linux",
+                **login_defs,
+                **pam_config
+            }
+
+            # Valuta la conformità
+            return self._evaluate_password_policy(policy_details)
+
+        except Exception as e:
+            self._logger.error(f"Errore nel controllo policy Linux: {str(e)}")
+            return CheckResult(
+                status=CheckStatus.ERROR,
+                message=f"Errore nel controllo policy Linux: {str(e)}"
+            )
+
+    def _parse_linux_login_defs(self) -> Dict[str, Any]:
+        """
+        Analizza /etc/login.defs per ottenere le policy delle password.
+
+        Returns:
+            Dizionario con i dettagli delle policy
+        """
+        policy_details = {
+            "min_password_length": None,
+            "max_password_age": None,
+            "min_password_age": None
+        }
 
         try:
-            # Controlla /etc/login.defs
-            try:
-                with open('/etc/login.defs', 'r') as f:
-                    content = f.read()
+            with open('/etc/login.defs', 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('PASS_MIN_LEN'):
+                        parts = line.split()
+                        if len(parts) > 1:
+                            policy_details["min_password_length"] = int(parts[1])
 
-                    # Estrae le configurazioni
-                    patterns = {
-                        'min_length': r'PASS_MIN_LEN\s+(\d+)',
-                        'max_age_days': r'PASS_MAX_DAYS\s+(\d+)',
-                        'min_age_days': r'PASS_MIN_DAYS\s+(\d+)',
-                        'warn_days': r'PASS_WARN_AGE\s+(\d+)'
-                    }
+                    elif line.startswith('PASS_MAX_DAYS'):
+                        parts = line.split()
+                        if len(parts) > 1:
+                            policy_details["max_password_age"] = int(parts[1])
 
-                    for key, pattern in patterns.items():
-                        match = re.search(pattern, content)
-                        if match:
-                            policy[key] = int(match.group(1))
+                    elif line.startswith('PASS_MIN_DAYS'):
+                        parts = line.split()
+                        if len(parts) > 1:
+                            policy_details["min_password_age"] = int(parts[1])
 
-            except FileNotFoundError:
-                policy['login_defs_error'] = "/etc/login.defs not found"
+        except FileNotFoundError:
+            self._logger.warning("File /etc/login.defs non trovato")
+        except Exception as e:
+            self._logger.error(f"Errore nel parsing login.defs: {str(e)}")
 
-            # Controlla PAM per complexity
-            try:
-                pam_files = ['/etc/pam.d/common-password', '/etc/pam.d/system-auth']
-                policy['pam_complexity'] = {}
+        return policy_details
 
-                for pam_file in pam_files:
-                    try:
-                        with open(pam_file, 'r') as f:
-                            content = f.read()
+    def _parse_linux_pam_config(self) -> Dict[str, Any]:
+        """
+        Controlla le configurazioni PAM per complessità delle password.
 
-                            # Cerca pam_pwquality o pam_cracklib
-                            if 'pam_pwquality' in content:
-                                policy['pam_complexity']['module'] = 'pam_pwquality'
-                                policy['pam_complexity']['enabled'] = True
+        Returns:
+            Dizionario con dettagli di complessità
+        """
+        policy_details = {
+            "complexity_enabled": False,
+            "lockout_threshold": None
+        }
 
-                                # Estrae parametri comuni
-                                minlen_match = re.search(r'minlen=(\d+)', content)
-                                if minlen_match:
-                                    policy['pam_complexity']['minlen'] = int(minlen_match.group(1))
+        pam_files = [
+            '/etc/pam.d/common-password',
+            '/etc/pam.d/system-auth',
+            '/etc/security/pwquality.conf'
+        ]
 
-                            elif 'pam_cracklib' in content:
-                                policy['pam_complexity']['module'] = 'pam_cracklib'
-                                policy['pam_complexity']['enabled'] = True
-                            else:
-                                policy['pam_complexity']['enabled'] = False
+        try:
+            for pam_file in pam_files:
+                if os.path.exists(pam_file):
+                    with open(pam_file, 'r') as f:
+                        content = f.read()
 
-                    except FileNotFoundError:
-                        continue
+                        # Cerca moduli di complessità
+                        if 'pam_pwquality.so' in content or 'pam_cracklib.so' in content:
+                            policy_details["complexity_enabled"] = True
 
-            except Exception as e:
-                policy['pam_error'] = str(e)
-
-            # Controlla /etc/security/pwquality.conf se esiste
-            try:
-                with open('/etc/security/pwquality.conf', 'r') as f:
-                    content = f.read()
-                    policy['pwquality_config'] = {}
-
-                    patterns = {
-                        'minlen': r'minlen\s*=\s*(\d+)',
-                        'minclass': r'minclass\s*=\s*(\d+)',
-                        'maxrepeat': r'maxrepeat\s*=\s*(\d+)',
-                        'maxsequence': r'maxsequence\s*=\s*(\d+)'
-                    }
-
-                    for key, pattern in patterns.items():
-                        match = re.search(pattern, content)
-                        if match:
-                            policy['pwquality_config'][key] = int(match.group(1))
-
-            except FileNotFoundError:
-                pass
+                        # Cerca impostazioni di lockout
+                        lockout_match = re.search(r'deny=(\d+)', content)
+                        if lockout_match:
+                            policy_details["lockout_threshold"] = int(lockout_match.group(1))
 
         except Exception as e:
-            self._logger.error(f"Error checking Linux password policy: {e}")
-            policy['error'] = str(e)
+            self._logger.error(f"Errore nel parsing configurazioni PAM: {str(e)}")
 
-        return policy
+        return policy_details
 
-    def _check_macos_password_policy(self) -> Dict[str, Any]:
-        """Controlla le policy delle password su macOS."""
-        policy = {}
+    def _check_macos_password_policy(self) -> CheckResult:
+        """
+        Controlla le policy delle password su macOS.
 
+        Returns:
+            Risultato del controllo delle password per macOS
+        """
         try:
             # Usa pwpolicy per ottenere le policy
-            result = subprocess.run(
-                ['pwpolicy', '-getaccountpolicies'],
-                capture_output=True, text=True
+            pwpolicy_result = subprocess.run(
+                ['pwpolicy', 'getaccountpolicies'],
+                capture_output=True, text=True, timeout=10
             )
 
-            if result.returncode == 0:
-                # Parse del XML output (semplificato)
-                policy['raw_output'] = result.stdout
+            # Analizza i risultati
+            policy_details = self._parse_macos_password_policy(pwpolicy_result.stdout)
 
-                # Estrae valori comuni
-                if 'policyAttributeMaximumFailedAuthentications' in result.stdout:
-                    policy['lockout_enabled'] = True
-                else:
-                    policy['lockout_enabled'] = False
-
-                if 'policyAttributePasswordMinLength' in result.stdout:
-                    match = re.search(r'<integer>(\d+)</integer>', result.stdout)
-                    if match:
-                        policy['min_length'] = int(match.group(1))
-
-            # Controlla le impostazioni di sistema
-            result = subprocess.run(
-                ['defaults', 'read', '/Library/Preferences/com.apple.loginwindow', 'DisableFDEAutoLogin'],
-                capture_output=True, text=True
-            )
-
-            if result.returncode == 0:
-                policy['fde_autologin_disabled'] = '1' in result.stdout
+            # Valuta la conformità
+            return self._evaluate_password_policy(policy_details)
 
         except Exception as e:
-            self._logger.error(f"Error checking macOS password policy: {e}")
-            policy['error'] = str(e)
+            self._logger.error(f"Errore nel controllo policy macOS: {str(e)}")
+            return CheckResult(
+                status=CheckStatus.ERROR,
+                message=f"Errore nel controllo policy macOS: {str(e)}"
+            )
 
-        return policy
 
-    def _analyze_policy_results(self, policy_checks: Dict[str, Any], os_type: str) -> tuple:
-        """Analizza i risultati delle policy e genera issues/recommendations."""
+    def _parse_macos_password_policy(self, pwpolicy_output: str) -> Dict[str, Any]:
+        """
+        Analizza l'output di pwpolicy per macOS.
+
+        Args:
+            pwpolicy_output: Output del comando pwpolicy
+
+        Returns:
+            Dizionario con i dettagli delle policy
+        """
+        policy_details = {
+            "source": "macos",
+            "min_password_length": None,
+            "max_password_age": None,
+            "complexity_enabled": False,
+            "lockout_threshold": None
+        }
+
+        try:
+            # Cerca la lunghezza minima della password
+            length_match = re.search(r'policyAttributePasswordMinimumLength\s+(\d+)', pwpolicy_output)
+            if length_match:
+                policy_details["min_password_length"] = int(length_match.group(1))
+
+            # Cerca la complessità
+            if (re.search(r'policyAttributePasswordRequiresAlpha', pwpolicy_output) and
+                re.search(r'policyAttributePasswordRequiresNumeric', pwpolicy_output)):
+                policy_details["complexity_enabled"] = True
+
+            # Cerca il blocco degli account
+            lockout_match = re.search(r'policyAttributeMaximumFailedAuthentications\s+(\d+)', pwpolicy_output)
+            if lockout_match:
+                policy_details["lockout_threshold"] = int(lockout_match.group(1))
+
+        except Exception as e:
+            self._logger.error(f"Errore nel parsing policy macOS: {str(e)}")
+
+        return policy_details
+
+    def _evaluate_password_policy(self, policy: Dict[str, Any]) -> CheckResult:
+        """
+        Valuta la conformità delle policy delle password.
+
+        Args:
+            policy: Dizionario con i dettagli delle policy
+
+        Returns:
+            Risultato del controllo delle password
+        """
         issues = []
         recommendations = []
 
-        # Definisce i requisiti minimi per una policy sicura
-        secure_requirements = {
-            'min_length': 8,
-            'max_age_days': 90,
-            'min_age_days': 1,
-            'history_length': 5,
-            'lockout_threshold': 5,
-            'complexity_enabled': True
-        }
-
-        # Controlla lunghezza minima
-        min_length = policy_checks.get('min_length')
-        if min_length is not None:
-            if min_length < secure_requirements['min_length']:
-                issues.append({
-                    "severity": "high",
-                    "description": f"Password minimum length too short: {min_length} (recommended: {secure_requirements['min_length']})",
-                    "field": "min_length",
-                    "current": min_length,
-                    "recommended": secure_requirements['min_length']
-                })
-                recommendations.append(
-                    f"Increase minimum password length to at least {secure_requirements['min_length']} characters")
-        else:
-            issues.append({
-                "severity": "medium",
-                "description": "Password minimum length not configured",
-                "field": "min_length"
-            })
-            recommendations.append("Configure minimum password length")
-
-        # Controlla età massima
-        max_age = policy_checks.get('max_age_days')
-        if max_age is None:
-            issues.append({
-                "severity": "medium",
-                "description": "Password never expires",
-                "field": "max_age_days"
-            })
-            recommendations.append("Configure password expiration policy")
-        elif max_age > secure_requirements['max_age_days']:
-            issues.append({
-                "severity": "medium",
-                "description": f"Password expiration too long: {max_age} days (recommended: {secure_requirements['max_age_days']})",
-                "field": "max_age_days",
-                "current": max_age,
-                "recommended": secure_requirements['max_age_days']
-            })
-            recommendations.append(f"Reduce password expiration to {secure_requirements['max_age_days']} days or less")
-
-        # Controlla complexity
-        complexity = policy_checks.get('complexity_enabled')
-        if complexity is False:
-            issues.append({
-                "severity": "critical",
-                "description": "Password complexity requirements disabled",
-                "field": "complexity"
-            })
-            recommendations.append("Enable password complexity requirements")
-        elif complexity is None:
-            issues.append({
-                "severity": "medium",
-                "description": "Password complexity requirements not configured",
-                "field": "complexity"
-            })
-            recommendations.append("Configure password complexity requirements")
-
-        # Controlla lockout threshold
-        lockout_threshold = policy_checks.get('lockout_threshold')
-        if lockout_threshold is None:
-            issues.append({
-                "severity": "high",
-                "description": "Account lockout policy not configured",
-                "field": "lockout_threshold"
-            })
-            recommendations.append("Configure account lockout policy")
-        elif lockout_threshold > secure_requirements['lockout_threshold']:
-            issues.append({
-                "severity": "medium",
-                "description": f"Account lockout threshold too high: {lockout_threshold} (recommended: {secure_requirements['lockout_threshold']})",
-                "field": "lockout_threshold",
-                "current": lockout_threshold,
-                "recommended": secure_requirements['lockout_threshold']
-            })
+        # Controllo lunghezza minima
+        min_length = policy.get("min_password_length", 0)
+        if min_length < self.security_requirements["min_length"]:
+            issues.append(f"Lunghezza minima password insufficiente: {min_length}")
             recommendations.append(
-                f"Reduce account lockout threshold to {secure_requirements['lockout_threshold']} attempts or less")
+                f"Aumentare la lunghezza minima a {self.security_requirements['min_length']} caratteri"
+            )
 
-        # Controlli specifici per OS
-        if os_type == "linux":
-            # Verifica moduli PAM
-            pam_complexity = policy_checks.get('pam_complexity', {})
-            if not pam_complexity.get('enabled', False):
-                issues.append({
-                    "severity": "high",
-                    "description": "PAM password complexity module not configured",
-                    "field": "pam_complexity"
-                })
-                recommendations.append("Configure PAM password complexity module (pam_pwquality or pam_cracklib)")
+        # Controllo complessità
+        if not policy.get("complexity_enabled", False):
+            issues.append("Complessità delle password non abilitata")
+            recommendations.append(
+                "Abilitare requisiti di complessità delle password (maiuscole, minuscole, numeri, caratteri speciali)"
+            )
 
-        return issues, recommendations
+        # Controllo scadenza password
+        max_age = policy.get("max_password_age")
+        if max_age is None or max_age > self.security_requirements["max_age_days"]:
+            issues.append(f"Scadenza password troppo lunga: {max_age} giorni")
+            recommendations.append(
+                f"Impostare la scadenza massima a {self.security_requirements['max_age_days']} giorni"
+            )
 
-    def _calculate_policy_score(self, policy_checks: Dict[str, Any]) -> float:
-        """Calcola un punteggio per la policy delle password."""
-        if 'error' in policy_checks:
-            return 0.0
+        # Controllo periodo minimo tra cambi password
+        min_age = policy.get("min_password_age", 0)
+        if min_age < self.security_requirements["min_age_days"]:
+            issues.append(f"Periodo minimo tra cambi password insufficiente: {min_age} giorni")
+            recommendations.append(
+                f"Impostare un periodo minimo di {self.security_requirements['min_age_days']} giorni tra i cambi password"
+            )
 
-        score = 0.0
-        max_score = 100.0
+        # Controllo storia delle password
+        history = policy.get("password_history", 0)
+        if history < self.security_requirements["password_history"]:
+            issues.append(f"Storia delle password insufficiente: {history}")
+            recommendations.append(
+                f"Mantenere almeno {self.security_requirements['password_history']} password precedenti non riutilizzabili"
+            )
 
-        # Punteggi per ogni criterio
-        scoring = {
-            'min_length': 20,  # 20 punti per lunghezza minima adeguata
-            'max_age_days': 15,  # 15 punti per scadenza configurata
-            'min_age_days': 10,  # 10 punti per età minima
-            'complexity_enabled': 25,  # 25 punti per complessità
-            'lockout_threshold': 20,  # 20 punti per lockout
-            'history_length': 10  # 10 punti per storico
+        # Controllo soglia di blocco
+        lockout_threshold = policy.get("lockout_threshold")
+        if lockout_threshold is None or lockout_threshold > self.security_requirements["lockout_threshold"]:
+            issues.append(f"Soglia di blocco account troppo alta: {lockout_threshold} tentativi")
+            recommendations.append(
+                f"Impostare la soglia di blocco a massimo {self.security_requirements['lockout_threshold']} tentativi"
+            )
+
+        # Determina lo status
+        if not issues:
+            status = CheckStatus.PASS
+            message = "Tutte le policy delle password soddisfano i requisiti minimi di sicurezza"
+        elif len(issues) <= 2:
+            status = CheckStatus.WARNING
+            message = f"Trovati {len(issues)} problemi nelle policy delle password"
+        else:
+            status = CheckStatus.FAIL
+            message = f"Trovati {len(issues)} problemi critici nelle policy delle password"
+
+        return CheckResult(
+            status=status,
+            message=message,
+            details={
+                "source": policy.get("source", "unknown"),
+                "policy_details": policy,
+                "total_issues": len(issues)
+            },
+            issues=[{"description": issue} for issue in issues],
+            recommendations=recommendations
+        )
+
+    def _analyze_password_complexity(self, password: str) -> Dict[str, bool]:
+        """
+        Analizza la complessità di una password di esempio.
+
+        Args:
+            password: Password da analizzare
+
+        Returns:
+            Dizionario con i criteri di complessità soddisfatti
+        """
+        complexity = {
+            "min_length": len(password) >= self.security_requirements["min_length"],
+            "uppercase": bool(re.search(r'[A-Z]', password)),
+            "lowercase": bool(re.search(r'[a-z]', password)),
+            "numbers": bool(re.search(r'\d', password)),
+            "special_chars": bool(re.search(r'[!@#$%^&*(),.?":{}|<>]', password))
         }
 
-        # Valuta lunghezza minima
-        min_length = policy_checks.get('min_length')
-        if min_length and min_length >= 8:
-            score += scoring['min_length']
-        elif min_length and min_length >= 6:
-            score += scoring['min_length'] * 0.7  # Punteggio parziale
+        return complexity
 
-        # Valuta scadenza password
-        max_age = policy_checks.get('max_age_days')
-        if max_age and 30 <= max_age <= 90:
-            score += scoring['max_age_days']
-        elif max_age and max_age <= 180:
-            score += scoring['max_age_days'] * 0.7
+    def generate_password_example(self) -> str:
+        """
+        Genera un esempio di password conforme ai requisiti.
 
-        # Valuta età minima
-        min_age = policy_checks.get('min_age_days')
-        if min_age and min_age >= 1:
-            score += scoring['min_age_days']
+        Returns:
+            Una password di esempio che soddisfa i requisiti di sicurezza
+        """
+        import random
+        import string
 
-        # Valuta complessità
-        if policy_checks.get('complexity_enabled') is True:
-            score += scoring['complexity_enabled']
+        # Definisci set di caratteri
+        uppercase = string.ascii_uppercase
+        lowercase = string.ascii_lowercase
+        numbers = string.digits
+        special_chars = "!@#$%^&*(),.?\":{}|<>"
 
-        # Valuta lockout
-        lockout = policy_checks.get('lockout_threshold')
-        if lockout and 3 <= lockout <= 5:
-            score += scoring['lockout_threshold']
-        elif lockout and lockout <= 10:
-            score += scoring['lockout_threshold'] * 0.7
+        # Assicura almeno un carattere per categoria
+        password_chars = [
+            random.choice(uppercase),
+            random.choice(lowercase),
+            random.choice(numbers),
+            random.choice(special_chars)
+        ]
 
-        # Valuta storico
-        history = policy_checks.get('history_length')
-        if history and history >= 5:
-            score += scoring['history_length']
-        elif history and history >= 3:
-            score += scoring['history_length'] * 0.7
+        # Aggiungi caratteri casuali per raggiungere la lunghezza minima
+        remaining_length = self.security_requirements["min_length"] - len(password_chars)
+        all_chars = uppercase + lowercase + numbers + special_chars
+        password_chars.extend(
+            random.choice(all_chars) for _ in range(remaining_length)
+        )
 
-        return min(score, max_score)
+        # Mescola i caratteri
+        random.shuffle(password_chars)
+
+        return ''.join(password_chars)
+
+    def __str__(self) -> str:
+        """
+        Rappresentazione stringa del controllo.
+
+        Returns:
+            Stringa descrittiva del controllo
+        """
+        return (
+            f"PasswordPolicyCheck(id='{self.id}', "
+            f"severity='{self.severity}', "
+            f"supported_os={self.supported_os})"
+        )
+
+    def get_requirements_summary(self) -> Dict[str, Any]:
+        """
+        Fornisce un riepilogo dei requisiti di sicurezza delle password.
+
+        Returns:
+            Dizionario con i requisiti di sicurezza
+        """
+        return {
+            "minimum_length": self.security_requirements["min_length"],
+            "maximum_length": self.security_requirements["max_length"],
+            "complexity_requirements": self.security_requirements["min_complexity"],
+            "max_password_age_days": self.security_requirements["max_age_days"],
+            "min_password_age_days": self.security_requirements["min_age_days"],
+            "password_history_length": self.security_requirements["password_history"],
+            "account_lockout_threshold": self.security_requirements["lockout_threshold"],
+            "account_lockout_duration_minutes": self.security_requirements["lockout_duration_minutes"]
+        }
+
+    def is_password_valid(self, password: str) -> bool:
+        """
+        Verifica se una password soddisfa tutti i requisiti di sicurezza.
+
+        Args:
+            password: Password da verificare
+
+        Returns:
+            True se la password è conforme ai requisiti, False altrimenti
+        """
+        complexity = self._analyze_password_complexity(password)
+
+        # Controlla tutti i criteri di complessità
+        return all([
+            complexity["min_length"],
+            complexity["uppercase"],
+            complexity["lowercase"],
+            complexity["numbers"],
+            complexity["special_chars"]
+        ])
+
+    def calculate_password_strength(self, password: str) -> float:
+        """
+        Calcola un punteggio di forza della password.
+
+        Args:
+            password: Password da valutare
+
+        Returns:
+            Punteggio di forza (0-100)
+        """
+        # Parametri per il calcolo della forza
+        strength_factors = {
+            "length": 0.3,
+            "uppercase": 0.15,
+            "lowercase": 0.15,
+            "numbers": 0.15,
+            "special_chars": 0.25
+        }
+
+        # Analizza la complessità
+        complexity = self._analyze_password_complexity(password)
+
+        # Calcola il punteggio
+        strength_score = sum(
+            strength_factors[factor] * (1 if value else 0)
+            for factor, value in complexity.items()
+        ) * 100
+
+        # Penalità per password troppo lunghe o troppo corte
+        length_penalty = max(0, min(1, (len(password) - self.security_requirements["min_length"]) / 10))
+        strength_score *= (1 + length_penalty)
+
+        return min(max(strength_score, 0), 100)
+
+    def generate_password_recommendations(self, policy_details: Dict[str, Any]) -> List[str]:
+        """
+        Genera raccomandazioni per le policy delle password.
+
+        Args:
+            policy_details: Dizionario con i dettagli delle policy
+
+        Returns:
+            Lista di raccomandazioni per migliorare le policy delle password
+        """
+        recommendations = []
+
+        # Controllo lunghezza minima
+        min_length = policy_details.get("min_password_length", 0)
+        if min_length < self.security_requirements["min_length"]:
+            recommendations.append(
+                f"Aumentare la lunghezza minima delle password a {self.security_requirements['min_length']} caratteri"
+            )
+
+        # Controllo complessità
+        if not policy_details.get("complexity_enabled", False):
+            recommendations.append(
+                "Abilitare requisiti di complessità delle password (maiuscole, minuscole, numeri, caratteri speciali)"
+            )
+
+        # Controllo scadenza password
+        max_age = policy_details.get("max_password_age")
+        if max_age is None or max_age > self.security_requirements["max_age_days"]:
+            recommendations.append(
+                f"Impostare la scadenza massima delle password a {self.security_requirements['max_age_days']} giorni"
+            )
+
+        # Controllo periodo minimo tra cambi password
+        min_age = policy_details.get("min_password_age", 0)
+        if min_age < self.security_requirements["min_age_days"]:
+            recommendations.append(
+                f"Impostare un periodo minimo di {self.security_requirements['min_age_days']} giorni tra i cambi password"
+            )
+
+        # Controllo storia delle password
+        history = policy_details.get("password_history", 0)
+        if history < self.security_requirements["password_history"]:
+            recommendations.append(
+                f"Mantenere almeno {self.security_requirements['password_history']} password precedenti non riutilizzabili"
+            )
+
+        # Controllo soglia di blocco
+        lockout_threshold = policy_details.get("lockout_threshold")
+        if lockout_threshold is None or lockout_threshold > self.security_requirements["lockout_threshold"]:
+            recommendations.append(
+                f"Impostare la soglia di blocco account a massimo {self.security_requirements['lockout_threshold']} tentativi"
+            )
+
+        return recommendations
