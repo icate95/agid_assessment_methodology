@@ -108,6 +108,6 @@ ENV/
 .vscode/
 .idea/
 
-compilance_*.json
+*.json
 report.json
 
