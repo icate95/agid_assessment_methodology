@@ -197,8 +197,8 @@ class TestAntivirusCheck:
         result = check.execute(context)
 
         assert result.status == CheckStatus.PASS
-        # assert result.details["xprotect_enabled"] is True
-        assert result.details["xprotect_enabled"] is False
+        assert result.details["xprotect_enabled"] is True
+        # assert result.details["xprotect_enabled"] is False
 
     @patch('agid_assessment_methodology.utils.helpers.run_command')
     def test_macos_gatekeeper_enabled(self, mock_run_command):
