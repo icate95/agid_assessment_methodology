@@ -383,89 +383,65 @@ class ReportGenerator:
             logger.error(f"Error generating JSON report: {str(e)}")
             raise
 
-    def _generate_csv_report(self, report_data: Union[Dict[str, Any], str], output_path: Path) -> Path:
+    def _generate_csv_report(self, report_data: Dict[str, Any], output_path: Path) -> Path:
         """Genera un report in formato CSV."""
         try:
-            # Se report_data è una stringa, prova a convertirla in dizionario
-            if isinstance(report_data, str):
-                try:
-                    report_data = json.loads(report_data)
-                except json.JSONDecodeError:
-                    logger.error(f"Unable to parse report_data string: {report_data}")
-                    raise ValueError("Invalid report data format")
-
-            # Verifica che report_data sia un dizionario
-            if not isinstance(report_data, dict):
-                logger.error(f"Invalid report data type: {type(report_data)}")
-                raise ValueError("Report data must be a dictionary")
-
             with open(output_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
 
-                # Log dei dati per debug
-                logger.debug(f"Full report data: {json.dumps(report_data, indent=2)}")
-
-                # Intestazione del report
-                writer.writerow(["AGID Assessment Methodology - Security Report"])
-
-                # Metadati di scansione
-                scan_metadata = report_data.get('scan_metadata', {})
-                writer.writerow(["Target", scan_metadata.get('target', 'N/A')])
-                writer.writerow(["Timestamp", scan_metadata.get('timestamp', 'N/A')])
-                writer.writerow(["OS Type", scan_metadata.get('os_type', 'N/A')])
-                writer.writerow(["Checks Executed", scan_metadata.get('checks_executed', 0)])
+                # Header
+                writer.writerow(["Report Generated", report_data.get("metadata", {}).get("report_generated", "N/A")])
                 writer.writerow([])
 
-                # Risultati dettagliati
-                writer.writerow(["DETAILED RESULTS"])
-                writer.writerow(["Category", "Check", "Status", "Message", "Details"])
+                # Executive Summary
+                writer.writerow(["EXECUTIVE SUMMARY"])
+                summary = report_data.get("executive_summary", {})
+                for key, value in summary.items():
+                    writer.writerow([key.replace('_', ' ').title(), str(value)])
+                writer.writerow([])
 
-                # Itera attraverso le categorie e i check
-                for category, checks in report_data.items():
-                    if category in ['scan_metadata', 'metadata']:
+                # Sistema - Risultati dei controlli (basato sulla struttura dei dati grezzi)
+                writer.writerow(["SISTEMA - CONTROLLI"])
+                writer.writerow(["Categoria", "Check", "Status", "Messaggio", "Dettagli"])
+
+                # Estrai i controlli dai dati grezzi
+                raw_data = report_data.get("raw_data", {})
+                for categoria, checks in raw_data.items():
+                    if categoria == "scan_metadata":
                         continue
-
                     for check_name, check_result in checks.items():
-                        # Gestisci casi in cui check_result potrebbe non essere un dizionario
-                        if not isinstance(check_result, dict):
-                            continue
-
                         writer.writerow([
-                            category,
+                            categoria,
                             check_name,
-                            check_result.get('status', 'N/A'),
-                            check_result.get('message', 'No details'),
-                            json.dumps(check_result.get('details', {}))
+                            check_result.get("status", "N/A"),
+                            check_result.get("message", ""),
+                            str(check_result.get("details", ""))
                         ])
+                writer.writerow([])
 
                 # Raccomandazioni
-                writer.writerow([])
-                writer.writerow(["RECOMMENDATIONS"])
-                writer.writerow(["Category", "Check", "Recommendation"])
-
-                # Trova tutte le raccomandazioni
-                for category, checks in report_data.items():
-                    if category in ['scan_metadata', 'metadata']:
+                writer.writerow(["RACCOMANDAZIONI"])
+                writer.writerow(["Categoria", "Check", "Raccomandazione"])
+                raw_data = report_data.get("raw_data", {})
+                for categoria, checks in raw_data.items():
+                    if categoria == "scan_metadata":
                         continue
-
                     for check_name, check_result in checks.items():
-                        if not isinstance(check_result, dict):
-                            continue
-
-                        recommendations = check_result.get('recommendations', [])
+                        recommendations = check_result.get("recommendations", [])
                         for rec in recommendations:
-                            writer.writerow([category, check_name, rec])
+                            writer.writerow([
+                                categoria,
+                                check_name,
+                                rec
+                            ])
 
             logger.info(f"CSV report generated: {output_path}")
             return output_path
 
         except Exception as e:
             logger.error(f"Error generating CSV report: {str(e)}")
-            # Log dell'errore dettagliato
-            logger.error(f"Report data type: {type(report_data)}")
             logger.error(f"Report data: {report_data}")
             raise
-
     def _generate_html_report(self, report_data: Dict[str, Any], output_path: Path, template_name: Optional[str] = None) -> Path:
         """Genera un report in formato HTML."""
         try:

@@ -35,7 +35,9 @@ dependencies = [
     "weasyprint>=56.0",  # Per generazione PDF
     "reportlab>=3.5.0",  # Fallback per PDF
     "schedule>=1.1.0",   # Per scheduling
-    "importlib-metadata>=4.8.0"  # Per supporto import dinamici
+    "importlib-metadata>=4.8.0",  # Per supporto import dinamici
+    "paramiko>=2.12.0",  # Per scansioni remote SSH
+    "python-nmap>=0.6.1" # Per scansioni di rete
 ]
 requires-python = ">=3.8"
 
@@ -52,8 +54,12 @@ pdf = [
     "weasyprint>=56.0",  # Per generazione PDF
     "reportlab>=3.6.0",  # Alternativa per PDF semplici
 ]
+remote = [
+    "paramiko>=2.12.0",  # Supporto per scansioni remote
+    "python-nmap>=0.6.1" # Scansioni di rete
+]
 all = [
-    "agid_assessment_methodology[dev,pdf]"
+    "agid_assessment_methodology[dev,pdf,remote]"
 ]
 
 [project.urls]

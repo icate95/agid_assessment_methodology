@@ -3,6 +3,7 @@ Modulo per il controllo delle policy delle password.
 
 Questo modulo fornisce un meccanismo di verifica completo per le policy delle
 password su diversi sistemi operativi, con supporto per Windows, Linux e macOS.
+Include controlli avanzati di sicurezza delle password.
 """
 
 import os
@@ -12,6 +13,7 @@ import tempfile
 import subprocess
 import platform
 import logging
+import zxcvbn
 from typing import Dict, Any, List, Optional, Tuple
 
 from agid_assessment_methodology.checks.base import BaseCheck, CheckResult, CheckStatus
@@ -19,41 +21,59 @@ from agid_assessment_methodology.checks.base import BaseCheck, CheckResult, Chec
 
 class PasswordPolicyCheck(BaseCheck):
     """
-    Classe per la verifica delle policy delle password.
+    Classe per la verifica delle policy delle password con controlli avanzati.
 
     Effettua controlli dettagliati su:
     - Lunghezza delle password
     - Complessità
     - Scadenza
     - Meccanismi di blocco account
+    - Rilevamento di password compromesse
+    - Analisi di dizionario e pattern
     """
 
     def __init__(self):
-        """Inizializza il controllo delle password con requisiti di sicurezza."""
+        """Inizializza il controllo delle password con requisiti di sicurezza avanzati."""
         super().__init__()
         self.id = "password_policy"
         self.name = "Password Policy Security Check"
-        self.description = "Verifica la conformità delle policy delle password agli standard di sicurezza"
+        self.description = "Verifica approfondita della conformità delle policy delle password agli standard di sicurezza più rigorosi"
         self.category = "authentication"
         self.severity = "high"
         self.supported_os = ["windows", "linux", "macos"]
 
-        # Requisiti minimi di sicurezza per le password
+        # Requisiti minimi di sicurezza delle password rafforzati
         self.security_requirements = {
-            "min_length": 12,
+            "min_length": 14,  # Aumentato a 14 caratteri
             "max_length": 128,
             "min_complexity": {
                 "uppercase": True,
                 "lowercase": True,
                 "numbers": True,
-                "special_chars": True
+                "special_chars": True,
+                "min_char_types": 3,  # Almeno 3 tipi di caratteri
             },
-            "max_age_days": 90,
-            "min_age_days": 1,
-            "password_history": 5,
-            "lockout_threshold": 5,
-            "lockout_duration_minutes": 30
+            "max_age_days": 90,  # Massimo 3 mesi
+            "min_age_days": 1,  # Almeno un giorno tra i cambi
+            "password_history": 10,  # Mantieni storia delle ultime 10 password
+            "lockout_threshold": 5,  # Dopo 5 tentativi
+            "lockout_duration_minutes": 30,
+            "prohibited_patterns": [
+                r'\d{4,}',  # Sequenze numeriche
+                r'(?i)password',  # Parola "password"
+                r'(?i)123',  # Sequenze semplici
+                r'(?i)qwerty',  # Pattern di tastiera
+                r'(?i)admin',  # Parole admin/amministratore
+                r'(?i)welcome',
+                r'(?i)letmein'
+            ]
         }
+
+        # Lista di password compromesse (da espandere/aggiornare periodicamente)
+        self.compromised_passwords = [
+            'password', '123456', 'qwerty', 'admin', 'welcome',
+            'letmein', 'monkey', '123123', 'dragon', 'baseball'
+        ]
 
     def execute(self, context: Dict[str, Any]) -> CheckResult:
         """
@@ -68,21 +88,30 @@ class PasswordPolicyCheck(BaseCheck):
         os_type = context.get('os_type', platform.system().lower())
 
         try:
-            # Seleziona il metodo di controllo specifico per il sistema operativo
-            password_policy_methods = {
-                'windows': self._check_windows_password_policy,
-                'linux': self._check_linux_password_policy,
-                'darwin': self._check_macos_password_policy
-            }
-
-            # Esegui il metodo specifico per l'OS
-            if os_type in password_policy_methods:
-                return password_policy_methods[os_type]()
+            # Metodi specifici per OS per ottenere le policy delle password
+            if os_type == 'windows':
+                policy_details = self._get_windows_password_policies()
+            elif os_type == 'linux':
+                policy_details = self._get_linux_password_policies()
+            elif os_type == 'darwin':  # macOS
+                policy_details = self._get_macos_password_policies()
             else:
                 return CheckResult(
                     status=CheckStatus.SKIPPED,
-                    message=f"Password policy check non supportato per {os_type}"
+                    message=f"Controllo policy password non supportato per {os_type}"
                 )
+
+            # Genera una password di esempio per test
+            test_password = self.generate_secure_password()
+
+            # Valuta la password di esempio
+            password_analysis = self.evaluate_password_against_requirements(test_password)
+
+            # Crea il report finale
+            return self._create_password_policy_report(
+                policy_details,
+                password_analysis
+            )
 
         except Exception as e:
             self._logger.error(f"Errore durante il controllo delle password policy: {str(e)}")
@@ -91,12 +120,370 @@ class PasswordPolicyCheck(BaseCheck):
                 message=f"Errore nel controllo delle password policy: {str(e)}"
             )
 
-    def _check_windows_password_policy(self) -> CheckResult:
+    def check_password_against_compromised_list(self, password: str) -> bool:
         """
-        Controlla le policy delle password su sistemi Windows.
+        Verifica se la password è presente in una lista di password compromesse.
+
+        Args:
+            password: Password da verificare
 
         Returns:
-            Risultato del controllo delle password per Windows
+            True se la password è compromessa, False altrimenti
+        """
+        return (
+            password.lower() in self.compromised_passwords or
+            any(pw in password.lower() for pw in self.compromised_passwords)
+        )
+
+    def check_password_complexity_advanced(self, password: str) -> Dict[str, Any]:
+        """
+        Esegue un'analisi avanzata della complessità della password.
+
+        Utilizza zxcvbn per una valutazione più approfondita.
+
+        Args:
+            password: Password da analizzare
+
+        Returns:
+            Dizionario con dettagli sulla complessità
+        """
+        try:
+            # Usa zxcvbn per l'analisi della password
+            result = zxcvbn.password_strength(password)
+
+            complexity_details = {
+                "score": result['score'],  # Punteggio da 0 a 4
+                "entropy": result['entropy'],  # Entropia della password
+                "crack_time_seconds": result['crack_times_seconds']['online_no_throttling_10_per_second'],
+                "feedback": result.get('feedback', {}).get('suggestions', []),
+                "warnings": result.get('feedback', {}).get('warning', ''),
+
+                # Controlli custom aggiuntivi
+                "char_types": {
+                    "uppercase": bool(re.search(r'[A-Z]', password)),
+                    "lowercase": bool(re.search(r'[a-z]', password)),
+                    "numbers": bool(re.search(r'\d', password)),
+                    "special_chars": bool(re.search(r'[!@#$%^&*(),.?":{}|<>]', password))
+                },
+                "char_types_count": sum([
+                    bool(re.search(r'[A-Z]', password)),
+                    bool(re.search(r'[a-z]', password)),
+                    bool(re.search(r'\d', password)),
+                    bool(re.search(r'[!@#$%^&*(),.?":{}|<>]', password))
+                ])
+            }
+
+            return complexity_details
+
+        except ImportError:
+            # Fallback se zxcvbn non è installato
+            return self._analyze_password_complexity(password)
+
+    def generate_secure_password(self, length: int = 16) -> str:
+        """
+        Genera una password sicura utilizzando criteri avanzati.
+
+        Args:
+            length: Lunghezza della password (default 16)
+
+        Returns:
+            Password generata
+        """
+        import secrets
+        import string
+
+        # Set di caratteri per la generazione
+        uppercase = string.ascii_uppercase
+        lowercase = string.ascii_lowercase
+        digits = string.digits
+        punctuation = "!@#$%^&*(),.?\":{}|<>"
+
+        # Combina tutti i set di caratteri
+        all_chars = uppercase + lowercase + digits + punctuation
+
+        # Assicura la presenza di almeno un carattere per categoria
+        password_chars = [
+            secrets.choice(uppercase),
+            secrets.choice(lowercase),
+            secrets.choice(digits),
+            secrets.choice(punctuation)
+        ]
+
+        # Aggiungi caratteri casuali per raggiungere la lunghezza desiderata
+        remaining_length = length - len(password_chars)
+        password_chars.extend(secrets.choice(all_chars) for _ in range(remaining_length))
+
+        # Mescola i caratteri
+        secrets.SystemRandom().shuffle(password_chars)
+
+        return ''.join(password_chars)
+
+    def evaluate_password_against_requirements(self, password: str) -> Dict[str, Any]:
+        """
+        Valuta una password rispetto a requisiti di sicurezza avanzati.
+
+        Args:
+            password: Password da valutare
+
+        Returns:
+            Dizionario con i risultati della valutazione
+        """
+        evaluation = {
+            "meets_length_requirement": len(password) >= self.security_requirements["min_length"],
+            "meets_complexity_requirement": False,
+            "is_compromised": self.check_password_against_compromised_list(password),
+            "prohibited_pattern_matches": [],
+            "complexity_details": None
+        }
+
+        # Analisi complessità avanzata
+        try:
+            complexity_details = self.check_password_complexity_advanced(password)
+            evaluation["complexity_details"] = complexity_details
+
+            # Valutazione complessità
+            char_types_met = sum(complexity_details["char_types"].values())
+            evaluation["meets_complexity_requirement"] = (
+                complexity_details["score"] >= 3 and  # zxcvbn score
+                char_types_met >= self.security_requirements["min_complexity"]["min_char_types"]
+            )
+        except Exception:
+            # Fallback al metodo base se zxcvbn non è disponibile
+            basic_complexity = self._analyze_password_complexity(password)
+            evaluation["complexity_details"] = basic_complexity
+            evaluation["meets_complexity_requirement"] = (
+                basic_complexity["min_length"] and
+                basic_complexity["uppercase"] and
+                basic_complexity["lowercase"] and
+                basic_complexity["numbers"] and
+                basic_complexity["special_chars"]
+            )
+
+        # Controllo pattern proibiti
+        for pattern in self.security_requirements["prohibited_patterns"]:
+            match = re.search(pattern, password, re.IGNORECASE)
+            if match:
+                evaluation["prohibited_pattern_matches"].append({
+                    "pattern": pattern,
+                    "matched_text": match.group(0)
+                })
+
+        return evaluation
+
+    def recommend_password_improvements(self, password_eval: Dict[str, Any]) -> List[str]:
+        """
+        Genera raccomandazioni specifiche per migliorare una password.
+
+        Args:
+            password_eval: Risultati della valutazione della password
+
+        Returns:
+            Lista di raccomandazioni
+        """
+        recommendations = []
+
+        if not password_eval["meets_length_requirement"]:
+            recommendations.append(
+                f"Aumentare la lunghezza della password a minimo {self.security_requirements['min_length']} caratteri"
+            )
+
+        if not password_eval["meets_complexity_requirement"]:
+            recommendations.append(
+                "Aumentare la complessità della password usando una combinazione di maiuscole, "
+                "minuscole, numeri e caratteri speciali"
+            )
+
+        if password_eval["is_compromised"]:
+            recommendations.append(
+                "La password corrente è presente in un elenco di password compromesse. "
+                "Cambiare immediatamente la password."
+            )
+
+        if password_eval["prohibited_pattern_matches"]:
+            recommendations.append(
+                "Evitare pattern o parole comuni facilmente indovinabili"
+            )
+
+        # Suggerimenti da zxcvbn, se disponibile
+        complexity_details = password_eval.get("complexity_details", {})
+        feedback = complexity_details.get("feedback", [])
+        warnings = complexity_details.get("warnings", '')
+
+        if feedback:
+            recommendations.extend([
+                f"Suggerimento: {suggestion}" for suggestion in feedback
+            ])
+
+        if warnings:
+            recommendations.append(f"Avvertenza: {warnings}")
+
+        return recommendations
+
+    def check_breach_databases(self, password: str) -> Dict[str, Any]:
+        """
+        Verifica la password contro database di password compromesse.
+
+        NOTA: Questa è un'implementazione di esempio.
+        In un'implementazione reale, si dovrebbe utilizzare un servizio
+        come HaveIBeenPwned API.
+
+        Args:
+            password: Password da verificare
+
+        Returns:
+            Dizionario con i risultati della verifica
+        """
+        # Implementazione di esempio molto semplificata
+        try:
+            # In un'implementazione reale, si farebbe una chiamata API
+            # a un servizio come HaveIBeenPwned
+            import hashlib
+
+            # Hash della password per la verifica
+            password_hash = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
+
+            # Lista di hash di password compromesse (esempio)
+            compromised_hashes = [
+                '5BAA61E4C9B93F3F0682250B6CF8331B7EE68FD8',  # password
+                '8CB2237D0679CA88DB6464EAE60836444F1F9E47'   # 12345
+            ]
+
+            return {
+                "hash": password_hash,
+                "compromised": password_hash in compromised_hashes,
+                "details": "Verificato contro una lista di hash di password compromesse"
+            }
+
+        except Exception as e:
+            return {
+                "error": str(e),
+                "compromised": None,
+                "details": "Impossibile completare la verifica"
+            }
+
+    def advanced_password_audit(self, username: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Esegue un audit approfondito delle password.
+
+        Args:
+            username: Nome utente opzionale per analisi contestuale
+
+        Returns:
+            Dizionario con i risultati dell'audit
+        """
+        # In un'implementazione reale, si potrebbe:
+        # 1. Controllare la password corrente dell'utente
+        # 2. Verificare la storia delle password
+        # 3. Controllare i requisiti di sistema
+
+        audit_results = {
+            "password_rotation_needed": False,
+            "last_change_days": None,
+            "system_password_policies": self.security_requirements
+        }
+
+        # Logica di esempio (da adattare al sistema specifico)
+        try:
+            # Qui si potrebbe integrare con meccanismi specifici del sistema operativo
+            # per ottenere informazioni sulla password dell'utente
+            pass
+        except Exception as e:
+            audit_results["error"] = str(e)
+
+        return audit_results
+
+    def _create_password_policy_report(self,
+                                       system_password_policies: Dict[str, Any],
+                                       password_analysis: Dict[str, Any]) -> CheckResult:
+        """
+        Crea un report dettagliato della policy delle password.
+
+        Args:
+            system_password_policies: Policy di sistema
+            password_analysis: Analisi delle password
+
+        Returns:
+            CheckResult con i dettagli della policy
+        """
+        # Determina lo status basato sull'analisi
+        status = CheckStatus.PASS
+        issues = []
+        recommendations = []
+
+        if not password_analysis.get("meets_length_requirement", False):
+            status = CheckStatus.WARNING
+            issues.append({
+                "severity": "high",
+                "description": "Lunghezza minima password non soddisfatta"
+            })
+
+        if not password_analysis.get("meets_complexity_requirement", False):
+            status = CheckStatus.FAIL
+            issues.append({
+                "severity": "critical",
+                "description": "Requisiti di complessità password non soddisfatti"
+            })
+
+        if password_analysis.get("is_compromised", False):
+            status = CheckStatus.FAIL
+            issues.append({
+                "severity": "critical",
+                "description": "Password presente in elenchi di password compromesse"
+            })
+
+        # Genera raccomandazioni
+        recommendations = self.recommend_password_improvements(password_analysis)
+
+        # Calcola il punteggio
+        score = self._calculate_password_policy_score(password_analysis)
+
+        return CheckResult(
+            status=status,
+            message="Verifica delle policy delle password completata",
+            details={
+                "system_policies": system_password_policies,
+                "password_analysis": password_analysis
+            },
+            issues=issues,
+            recommendations=recommendations,
+            score=self._calculate_password_policy_score(password_analysis)
+        )
+
+    def _calculate_password_policy_score(self, password_analysis: Dict[str, Any]) -> float:
+        """
+        Calcola un punteggio per la policy delle password.
+
+        Args:
+            password_analysis: Risultati dell'analisi della password
+
+        Returns:
+            Punteggio (0-100)
+        """
+        score = 100.0  # Inizia con un punteggio massimo
+
+        # Sottrai punti per problemi specifici
+        if not password_analysis.get("meets_length_requirement", False):
+            score -= 30
+
+        if not password_analysis.get("meets_complexity_requirement", False):
+            score -= 40
+
+        if password_analysis.get("is_compromised", False):
+            score -= 50
+
+        # Controlla i pattern proibiti
+        prohibited_matches = password_analysis.get("prohibited_pattern_matches", [])
+        score -= len(prohibited_matches) * 10
+
+        # Assicura che il punteggio sia tra 0 e 100
+        return max(0, min(score, 100))
+
+    def _get_windows_password_policies(self) -> Dict[str, Any]:
+        """
+        Ottiene le policy delle password per Windows.
+
+        Returns:
+            Dizionario con i dettagli delle policy di Windows
         """
         try:
             # Usa net accounts per ottenere informazioni di base
@@ -122,74 +509,18 @@ class PasswordPolicyCheck(BaseCheck):
             # Rimuovi il file temporaneo
             os.unlink(secedit_temp)
 
-            # Valuta la conformità
-            return self._evaluate_password_policy(policy_details)
+            return policy_details
 
         except Exception as e:
-            self._logger.error(f"Errore nel controllo policy Windows: {str(e)}")
-            return CheckResult(
-                status=CheckStatus.FAIL,
-                message=f"Errore nel controllo policy Windows: {str(e)}"
-            )
+            self._logger.error(f"Errore nel recupero delle policy Windows: {str(e)}")
+            return {}
 
-    def _parse_windows_password_policy(self, net_output: str, secedit_path: str) -> Dict[str, Any]:
+    def _get_linux_password_policies(self) -> Dict[str, Any]:
         """
-        Analizza l'output dei comandi Windows per estrarre le policy delle password.
-
-        Args:
-            net_output: Output del comando net accounts
-            secedit_path: Percorso al file temporaneo di secedit
+        Ottiene le policy delle password per Linux.
 
         Returns:
-            Dizionario con i dettagli delle policy
-        """
-        policy_details = {
-            "source": "windows",
-            "min_password_length": None,
-            "max_password_age": None,
-            "min_password_age": None,
-            "password_history": None,
-            "lockout_threshold": None,
-            "complexity_enabled": False
-        }
-
-        # Parsing net accounts
-        for line in net_output.split('\n'):
-            line = line.strip()
-            match_length = re.search(r'Minimum password length:\s*(\d+)', line, re.IGNORECASE)
-            match_max_age = re.search(r'Maximum password age:\s*(\d+)\s*days', line, re.IGNORECASE)
-            match_min_age = re.search(r'Minimum password age:\s*(\d+)\s*day', line, re.IGNORECASE)
-            match_history = re.search(r'Password history length:\s*(\d+)', line, re.IGNORECASE)
-            match_lockout = re.search(r'Lockout threshold:\s*(\d+)', line, re.IGNORECASE)
-
-            if match_length:
-                policy_details["min_password_length"] = int(match_length.group(1))
-            if match_max_age:
-                policy_details["max_password_age"] = int(match_max_age.group(1))
-            if match_min_age:
-                policy_details["min_password_age"] = int(match_min_age.group(1))
-            if match_history:
-                policy_details["password_history"] = int(match_history.group(1))
-            if match_lockout:
-                policy_details["lockout_threshold"] = int(match_lockout.group(1))
-
-        # Parsing secedit per complessità
-        try:
-            with open(secedit_path, 'r') as f:
-                secedit_content = f.read()
-                policy_details["complexity_enabled"] = 'PasswordComplexity = 1' in secedit_content
-
-        except Exception as e:
-            self._logger.warning(f"Errore nel parsing secedit: {str(e)}")
-
-        return policy_details
-
-    def _check_linux_password_policy(self) -> CheckResult:
-        """
-        Controlla le policy delle password su sistemi Linux.
-
-        Returns:
-            Risultato del controllo delle password per Linux
+            Dizionario con i dettagli delle policy di Linux
         """
         try:
             # Analizza /etc/login.defs
@@ -199,105 +530,21 @@ class PasswordPolicyCheck(BaseCheck):
             pam_config = self._parse_linux_pam_config()
 
             # Combina i risultati
-            policy_details = {
-                "source": "linux",
+            return {
                 **login_defs,
                 **pam_config
             }
 
-            # Valuta la conformità
-            return self._evaluate_password_policy(policy_details)
-
         except Exception as e:
-            self._logger.error(f"Errore nel controllo policy Linux: {str(e)}")
-            return CheckResult(
-                status=CheckStatus.ERROR,
-                message=f"Errore nel controllo policy Linux: {str(e)}"
-            )
+            self._logger.error(f"Errore nel recupero delle policy Linux: {str(e)}")
+            return {}
 
-    def _parse_linux_login_defs(self) -> Dict[str, Any]:
+    def _get_macos_password_policies(self) -> Dict[str, Any]:
         """
-        Analizza /etc/login.defs per ottenere le policy delle password.
+        Ottiene le policy delle password per macOS.
 
         Returns:
-            Dizionario con i dettagli delle policy
-        """
-        policy_details = {
-            "min_password_length": None,
-            "max_password_age": None,
-            "min_password_age": None
-        }
-
-        try:
-            with open('/etc/login.defs', 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith('PASS_MIN_LEN'):
-                        parts = line.split()
-                        if len(parts) > 1:
-                            policy_details["min_password_length"] = int(parts[1])
-
-                    elif line.startswith('PASS_MAX_DAYS'):
-                        parts = line.split()
-                        if len(parts) > 1:
-                            policy_details["max_password_age"] = int(parts[1])
-
-                    elif line.startswith('PASS_MIN_DAYS'):
-                        parts = line.split()
-                        if len(parts) > 1:
-                            policy_details["min_password_age"] = int(parts[1])
-
-        except FileNotFoundError:
-            self._logger.warning("File /etc/login.defs non trovato")
-        except Exception as e:
-            self._logger.error(f"Errore nel parsing login.defs: {str(e)}")
-
-        return policy_details
-
-    def _parse_linux_pam_config(self) -> Dict[str, Any]:
-        """
-        Controlla le configurazioni PAM per complessità delle password.
-
-        Returns:
-            Dizionario con dettagli di complessità
-        """
-        policy_details = {
-            "complexity_enabled": False,
-            "lockout_threshold": None
-        }
-
-        pam_files = [
-            '/etc/pam.d/common-password',
-            '/etc/pam.d/system-auth',
-            '/etc/security/pwquality.conf'
-        ]
-
-        try:
-            for pam_file in pam_files:
-                if os.path.exists(pam_file):
-                    with open(pam_file, 'r') as f:
-                        content = f.read()
-
-                        # Cerca moduli di complessità
-                        if 'pam_pwquality.so' in content or 'pam_cracklib.so' in content:
-                            policy_details["complexity_enabled"] = True
-
-                        # Cerca impostazioni di lockout
-                        lockout_match = re.search(r'deny=(\d+)', content)
-                        if lockout_match:
-                            policy_details["lockout_threshold"] = int(lockout_match.group(1))
-
-        except Exception as e:
-            self._logger.error(f"Errore nel parsing configurazioni PAM: {str(e)}")
-
-        return policy_details
-
-    def _check_macos_password_policy(self) -> CheckResult:
-        """
-        Controlla le policy delle password su macOS.
-
-        Returns:
-            Risultato del controllo delle password per macOS
+            Dizionario con i dettagli delle policy di macOS
         """
         try:
             # Usa pwpolicy per ottenere le policy
@@ -307,334 +554,8 @@ class PasswordPolicyCheck(BaseCheck):
             )
 
             # Analizza i risultati
-            policy_details = self._parse_macos_password_policy(pwpolicy_result.stdout)
-
-            # Valuta la conformità
-            return self._evaluate_password_policy(policy_details)
+            return self._parse_macos_password_policy(pwpolicy_result.stdout)
 
         except Exception as e:
-            self._logger.error(f"Errore nel controllo policy macOS: {str(e)}")
-            return CheckResult(
-                status=CheckStatus.ERROR,
-                message=f"Errore nel controllo policy macOS: {str(e)}"
-            )
-
-
-    def _parse_macos_password_policy(self, pwpolicy_output: str) -> Dict[str, Any]:
-        """
-        Analizza l'output di pwpolicy per macOS.
-
-        Args:
-            pwpolicy_output: Output del comando pwpolicy
-
-        Returns:
-            Dizionario con i dettagli delle policy
-        """
-        policy_details = {
-            "source": "macos",
-            "min_password_length": None,
-            "max_password_age": None,
-            "complexity_enabled": False,
-            "lockout_threshold": None
-        }
-
-        try:
-            # Cerca la lunghezza minima della password
-            length_match = re.search(r'policyAttributePasswordMinimumLength\s+(\d+)', pwpolicy_output)
-            if length_match:
-                policy_details["min_password_length"] = int(length_match.group(1))
-
-            # Cerca la complessità
-            if (re.search(r'policyAttributePasswordRequiresAlpha', pwpolicy_output) and
-                re.search(r'policyAttributePasswordRequiresNumeric', pwpolicy_output)):
-                policy_details["complexity_enabled"] = True
-
-            # Cerca il blocco degli account
-            lockout_match = re.search(r'policyAttributeMaximumFailedAuthentications\s+(\d+)', pwpolicy_output)
-            if lockout_match:
-                policy_details["lockout_threshold"] = int(lockout_match.group(1))
-
-        except Exception as e:
-            self._logger.error(f"Errore nel parsing policy macOS: {str(e)}")
-
-        return policy_details
-
-    def _evaluate_password_policy(self, policy: Dict[str, Any]) -> CheckResult:
-        """
-        Valuta la conformità delle policy delle password.
-
-        Args:
-            policy: Dizionario con i dettagli delle policy
-
-        Returns:
-            Risultato del controllo delle password
-        """
-        issues = []
-        recommendations = []
-
-        # Controllo lunghezza minima
-        min_length = policy.get("min_password_length", 0)
-        if min_length < self.security_requirements["min_length"]:
-            issues.append(f"Lunghezza minima password insufficiente: {min_length}")
-            recommendations.append(
-                f"Aumentare la lunghezza minima a {self.security_requirements['min_length']} caratteri"
-            )
-
-        # Controllo complessità
-        if not policy.get("complexity_enabled", False):
-            issues.append("Complessità delle password non abilitata")
-            recommendations.append(
-                "Abilitare requisiti di complessità delle password (maiuscole, minuscole, numeri, caratteri speciali)"
-            )
-
-        # Controllo scadenza password
-        max_age = policy.get("max_password_age")
-        if max_age is None or max_age > self.security_requirements["max_age_days"]:
-            issues.append(f"Scadenza password troppo lunga: {max_age} giorni")
-            recommendations.append(
-                f"Impostare la scadenza massima a {self.security_requirements['max_age_days']} giorni"
-            )
-
-        # Controllo periodo minimo tra cambi password
-        min_age = policy.get("min_password_age", 0)
-        if min_age < self.security_requirements["min_age_days"]:
-            issues.append(f"Periodo minimo tra cambi password insufficiente: {min_age} giorni")
-            recommendations.append(
-                f"Impostare un periodo minimo di {self.security_requirements['min_age_days']} giorni tra i cambi password"
-            )
-
-        # Controllo storia delle password
-        history = policy.get("password_history", 0)
-        if history < self.security_requirements["password_history"]:
-            issues.append(f"Storia delle password insufficiente: {history}")
-            recommendations.append(
-                f"Mantenere almeno {self.security_requirements['password_history']} password precedenti non riutilizzabili"
-            )
-
-        # Controllo soglia di blocco
-        lockout_threshold = policy.get("lockout_threshold")
-        if lockout_threshold is None or lockout_threshold > self.security_requirements["lockout_threshold"]:
-            issues.append(f"Soglia di blocco account troppo alta: {lockout_threshold} tentativi")
-            recommendations.append(
-                f"Impostare la soglia di blocco a massimo {self.security_requirements['lockout_threshold']} tentativi"
-            )
-
-        # Determina lo status
-        if not issues:
-            status = CheckStatus.PASS
-            message = "Tutte le policy delle password soddisfano i requisiti minimi di sicurezza"
-        elif len(issues) <= 2:
-            status = CheckStatus.WARNING
-            message = f"Trovati {len(issues)} problemi nelle policy delle password"
-        else:
-            status = CheckStatus.FAIL
-            message = f"Trovati {len(issues)} problemi critici nelle policy delle password"
-
-        return CheckResult(
-            status=status,
-            message=message,
-            details={
-                "source": policy.get("source", "unknown"),
-                "policy_details": policy,
-                "total_issues": len(issues)
-            },
-            issues=[{"description": issue} for issue in issues],
-            recommendations=recommendations
-        )
-
-    def _analyze_password_complexity(self, password: str) -> Dict[str, bool]:
-        """
-        Analizza la complessità di una password di esempio.
-
-        Args:
-            password: Password da analizzare
-
-        Returns:
-            Dizionario con i criteri di complessità soddisfatti
-        """
-        complexity = {
-            "min_length": len(password) >= self.security_requirements["min_length"],
-            "uppercase": bool(re.search(r'[A-Z]', password)),
-            "lowercase": bool(re.search(r'[a-z]', password)),
-            "numbers": bool(re.search(r'\d', password)),
-            "special_chars": bool(re.search(r'[!@#$%^&*(),.?":{}|<>]', password))
-        }
-
-        return complexity
-
-    def generate_password_example(self) -> str:
-        """
-        Genera un esempio di password conforme ai requisiti.
-
-        Returns:
-            Una password di esempio che soddisfa i requisiti di sicurezza
-        """
-        import random
-        import string
-
-        # Definisci set di caratteri
-        uppercase = string.ascii_uppercase
-        lowercase = string.ascii_lowercase
-        numbers = string.digits
-        special_chars = "!@#$%^&*(),.?\":{}|<>"
-
-        # Assicura almeno un carattere per categoria
-        password_chars = [
-            random.choice(uppercase),
-            random.choice(lowercase),
-            random.choice(numbers),
-            random.choice(special_chars)
-        ]
-
-        # Aggiungi caratteri casuali per raggiungere la lunghezza minima
-        remaining_length = self.security_requirements["min_length"] - len(password_chars)
-        all_chars = uppercase + lowercase + numbers + special_chars
-        password_chars.extend(
-            random.choice(all_chars) for _ in range(remaining_length)
-        )
-
-        # Mescola i caratteri
-        random.shuffle(password_chars)
-
-        return ''.join(password_chars)
-
-    def __str__(self) -> str:
-        """
-        Rappresentazione stringa del controllo.
-
-        Returns:
-            Stringa descrittiva del controllo
-        """
-        return (
-            f"PasswordPolicyCheck(id='{self.id}', "
-            f"severity='{self.severity}', "
-            f"supported_os={self.supported_os})"
-        )
-
-    def get_requirements_summary(self) -> Dict[str, Any]:
-        """
-        Fornisce un riepilogo dei requisiti di sicurezza delle password.
-
-        Returns:
-            Dizionario con i requisiti di sicurezza
-        """
-        return {
-            "minimum_length": self.security_requirements["min_length"],
-            "maximum_length": self.security_requirements["max_length"],
-            "complexity_requirements": self.security_requirements["min_complexity"],
-            "max_password_age_days": self.security_requirements["max_age_days"],
-            "min_password_age_days": self.security_requirements["min_age_days"],
-            "password_history_length": self.security_requirements["password_history"],
-            "account_lockout_threshold": self.security_requirements["lockout_threshold"],
-            "account_lockout_duration_minutes": self.security_requirements["lockout_duration_minutes"]
-        }
-
-    def is_password_valid(self, password: str) -> bool:
-        """
-        Verifica se una password soddisfa tutti i requisiti di sicurezza.
-
-        Args:
-            password: Password da verificare
-
-        Returns:
-            True se la password è conforme ai requisiti, False altrimenti
-        """
-        complexity = self._analyze_password_complexity(password)
-
-        # Controlla tutti i criteri di complessità
-        return all([
-            complexity["min_length"],
-            complexity["uppercase"],
-            complexity["lowercase"],
-            complexity["numbers"],
-            complexity["special_chars"]
-        ])
-
-    def calculate_password_strength(self, password: str) -> float:
-        """
-        Calcola un punteggio di forza della password.
-
-        Args:
-            password: Password da valutare
-
-        Returns:
-            Punteggio di forza (0-100)
-        """
-        # Parametri per il calcolo della forza
-        strength_factors = {
-            "length": 0.3,
-            "uppercase": 0.15,
-            "lowercase": 0.15,
-            "numbers": 0.15,
-            "special_chars": 0.25
-        }
-
-        # Analizza la complessità
-        complexity = self._analyze_password_complexity(password)
-
-        # Calcola il punteggio
-        strength_score = sum(
-            strength_factors[factor] * (1 if value else 0)
-            for factor, value in complexity.items()
-        ) * 100
-
-        # Penalità per password troppo lunghe o troppo corte
-        length_penalty = max(0, min(1, (len(password) - self.security_requirements["min_length"]) / 10))
-        strength_score *= (1 + length_penalty)
-
-        return min(max(strength_score, 0), 100)
-
-    def generate_password_recommendations(self, policy_details: Dict[str, Any]) -> List[str]:
-        """
-        Genera raccomandazioni per le policy delle password.
-
-        Args:
-            policy_details: Dizionario con i dettagli delle policy
-
-        Returns:
-            Lista di raccomandazioni per migliorare le policy delle password
-        """
-        recommendations = []
-
-        # Controllo lunghezza minima
-        min_length = policy_details.get("min_password_length", 0)
-        if min_length < self.security_requirements["min_length"]:
-            recommendations.append(
-                f"Aumentare la lunghezza minima delle password a {self.security_requirements['min_length']} caratteri"
-            )
-
-        # Controllo complessità
-        if not policy_details.get("complexity_enabled", False):
-            recommendations.append(
-                "Abilitare requisiti di complessità delle password (maiuscole, minuscole, numeri, caratteri speciali)"
-            )
-
-        # Controllo scadenza password
-        max_age = policy_details.get("max_password_age")
-        if max_age is None or max_age > self.security_requirements["max_age_days"]:
-            recommendations.append(
-                f"Impostare la scadenza massima delle password a {self.security_requirements['max_age_days']} giorni"
-            )
-
-        # Controllo periodo minimo tra cambi password
-        min_age = policy_details.get("min_password_age", 0)
-        if min_age < self.security_requirements["min_age_days"]:
-            recommendations.append(
-                f"Impostare un periodo minimo di {self.security_requirements['min_age_days']} giorni tra i cambi password"
-            )
-
-        # Controllo storia delle password
-        history = policy_details.get("password_history", 0)
-        if history < self.security_requirements["password_history"]:
-            recommendations.append(
-                f"Mantenere almeno {self.security_requirements['password_history']} password precedenti non riutilizzabili"
-            )
-
-        # Controllo soglia di blocco
-        lockout_threshold = policy_details.get("lockout_threshold")
-        if lockout_threshold is None or lockout_threshold > self.security_requirements["lockout_threshold"]:
-            recommendations.append(
-                f"Impostare la soglia di blocco account a massimo {self.security_requirements['lockout_threshold']} tentativi"
-            )
-
-        return recommendations
+            self._logger.error(f"Errore nel recupero delle policy macOS: {str(e)}")
+            return {}

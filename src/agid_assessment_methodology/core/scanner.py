@@ -166,15 +166,83 @@ class Scanner:
         """
         logger.info(f"Starting scan of target: {self.target}")
 
+        # Se il target è un indirizzo IP, prova a rilevare le credenziali SSH
+        if self._is_remote_target():
+            try:
+                from .remote_scanner import discover_ssh_credentials, RemoteScanner
+
+                # Scopri le credenziali SSH
+                credentials = discover_ssh_credentials(self.target)
+
+                if not credentials:
+                    logger.error(f"Impossibile connettersi al target remoto: {self.target}")
+                    return {
+                        "scan_metadata": {
+                            "timestamp": datetime.now().isoformat(),
+                            "target": self.target,
+                            "scanner_version": "0.1.0",
+                            "checks_executed": 0,
+                            "os_type": "unknown",
+                            "error": "No valid SSH credentials found"
+                        }
+                    }
+
+                # Usa il primo set di credenziali valide
+                first_valid_cred = credentials[0]
+
+                # Crea uno scanner remoto
+                remote_scanner = RemoteScanner(
+                    target=self.target,
+                    username=first_valid_cred['username'],
+                    password=first_valid_cred['password']
+                )
+
+                # Rileva il sistema operativo
+                os_type = first_valid_cred['os_type']
+
+                # Raccogli informazioni di sistema
+                system_info = remote_scanner.get_remote_system_info()
+
+            except ImportError:
+                logger.error("Supporto per scansioni remote non disponibile. Installare 'paramiko'.")
+                return {
+                    "scan_metadata": {
+                        "timestamp": datetime.now().isoformat(),
+                        "target": self.target,
+                        "scanner_version": "0.1.0",
+                        "checks_executed": 0,
+                        "os_type": "unknown",
+                        "error": "Remote scanning support not available"
+                    }
+                }
+            except Exception as e:
+                logger.error(f"Errore durante la scansione remota: {e}")
+                return {
+                    "scan_metadata": {
+                        "timestamp": datetime.now().isoformat(),
+                        "target": self.target,
+                        "scanner_version": "0.1.0",
+                        "checks_executed": 0,
+                        "os_type": "unknown",
+                        "error": str(e)
+                    }
+                }
+
+        else:
+            # Target locale
+            os_type = self.detect_os()
+            system_info = self.get_system_info()
+
         # Importa il registro dei checks
         from ..checks import registry
 
         # Prepara il contesto per i checks
         context = {
             "target": self.target,
-            "os_type": self.os_type or self.detect_os(),
+            "os_type": os_type,
             "is_local": self._is_local,
-            "scanner_config": self.config
+            "scanner_config": self.config,
+            "system_info": system_info
         }
 
         # Applica filtri se specificati
@@ -192,10 +260,7 @@ class Scanner:
 
         # Converte i risultati in formato compatibile con Assessment
         # E categorizza correttamente i risultati
-        categorized_results = {
-            'scan_metadata': check_results.get('scan_metadata', {}),
-
-        }
+        categorized_results = {}
 
         for check_id, check_result in check_results.items():
             result_dict = check_result.to_dict()
@@ -219,16 +284,37 @@ class Scanner:
             "checks_executed": len(check_results),
             "os_type": context["os_type"],
             "enabled_categories": enabled_categories,
-            "specific_checks": specific_checks
+            "specific_checks": specific_checks,
+            **system_info
         }
 
         logger.info(f"Scan completed for target: {self.target}")
         return categorized_results
 
-    def __str__(self) -> str:
-        """Rappresentazione string del scanner."""
-        return f"Scanner(target='{self.target}', os_type='{self.os_type}')"
 
-    def __repr__(self) -> str:
-        """Rappresentazione dettagliata del scanner."""
-        return f"Scanner(target='{self.target}', config={self.config}, os_type='{self.os_type}')"
+    def _is_remote_target(self) -> bool:
+        """
+        Determina se il target è un sistema remoto.
+
+        Returns:
+            True se il target è un indirizzo IP o hostname remoto
+        """
+        # Lista di target locali
+        local_targets = {"localhost", "127.0.0.1", "::1", "."}
+
+        # Se il target è in local_targets, non è remoto
+        if self.target in local_targets:
+            return False
+
+        try:
+            import ipaddress
+
+            # Controlla se è un indirizzo IP valido
+            ip = ipaddress.ip_address(self.target)
+
+            # Considera remoto se non è un indirizzo di loopback
+            return not (ip.is_loopback or ip.is_private)
+
+        except ValueError:
+            # Se non è un IP valido, considera come potenzialmente remoto se non è vuoto
+            return bool(self.target and self.target not in local_targets)
