@@ -3,7 +3,7 @@
 import os
 import subprocess
 from typing import Dict, Any, List
-from ..base import BaseCheck, CheckResult, CheckStatus
+from agid_assessment_methodology.checks.base import BaseCheck, CheckResult, CheckStatus
 
 
 class BasicSecurityCheck(BaseCheck):

@@ -14,7 +14,7 @@ import platform
 import logging
 from typing import Dict, Any, List, Optional, Tuple
 
-from ..base import BaseCheck, CheckResult, CheckStatus
+from agid_assessment_methodology.checks.base import BaseCheck, CheckResult, CheckStatus
 
 
 class PasswordPolicyCheck(BaseCheck):

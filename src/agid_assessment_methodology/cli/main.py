@@ -8,6 +8,16 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+# Configura logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('cli_debug.log', encoding='utf-8')
+    ]
+)
+
 # Inizializza console e logger
 console = Console()
 logger = logging.getLogger(__name__)
@@ -227,17 +237,21 @@ def list_checks(
     """List available security checks."""
     try:
         # Debug imports
+        # console.print("[bold]Debugging Check Registry[/bold]")
+
+        # Importa il registro dei controlli con debug
+        from ..checks import registry
+        from importlib import import_module
         import sys
-        import importlib
 
-        console.print("[bold]Python Path:[/bold]")
-        for path in sys.path:
-            console.print(path)
+        # Log dei percorsi di importazione
+        # console.print("\n[bold]Python Path:[/bold]")
+        # for path in sys.path:
+        #     console.print(path)
 
-        console.print("\n[bold]Checking imports...[/bold]")
-
-        # Forza l'importazione dei moduli
-        modules_to_check = [
+        # Log dei moduli disponibili
+        # console.print("\n[bold]Importing all check modules...[/bold]")
+        check_modules = [
             'agid_assessment_methodology.checks.system.system_info',
             'agid_assessment_methodology.checks.system.basic_security',
             'agid_assessment_methodology.checks.authentication.password_policy',
@@ -249,37 +263,31 @@ def list_checks(
             'agid_assessment_methodology.checks.malware.quarantine'
         ]
 
-        for module_name in modules_to_check:
+        for module_name in check_modules:
             try:
-                module = importlib.import_module(module_name)
-                console.print(f"[green]Imported:[/green] {module_name}")
+                module = import_module(module_name)
             except ImportError as e:
                 console.print(f"[red]Failed to import:[/red] {module_name}")
                 console.print(f"Error: {e}")
+                logger.error(f"Import error for {module_name}: {e}")
 
-        # Importa il registro dei controlli
-        from ..checks.registry import CheckRegistry
+        # Ottieni le informazioni del registro
+        registry_info = registry.get_registry_info()
 
-        registry = CheckRegistry()
-        checks = registry.get_registry_info()
+        console.print(f"\n[bold]Total Checks in Registry:[/bold] {registry_info['total_checks']}")
+        console.print(f"[bold]Categories:[/bold] {len(registry_info['categories'])}")
 
-        console.print(f"\n[bold]Total Checks in Registry:[/bold] {len(registry._checks)}")
+        # Crea una tabella per visualizzare i controlli
+        table = Table(title="Security Checks")
+        table.add_column("Check ID", style="cyan")
+        table.add_column("Name", style="green")
+        table.add_column("Category", style="yellow")
+        table.add_column("Severity", style="red")
+        table.add_column("Supported OS", style="blue")
 
-        for check_id, check in registry._checks.items():
-            console.print(f"[yellow]Check:[/yellow] {check_id}")
-            console.print(f"  Name: {check.name}")
-            console.print(f"  Category: {check.category}")
-            console.print(f"  Severity: {check.severity}")
-            console.print(f"  Supported OS: {check.supported_os}")
-            console.print()
-        # Se non ci sono controlli registrati, mostra tutti i controlli disponibili
-        if not checks.get('available_checks'):
-            console.print("[yellow]No checks are registered. Showing all available checks in the system.[/yellow]")
+        # Filtra i controlli se specificati
+        available_checks = registry_info.get('available_checks', [])
 
-        # Se nessun filtro è stato applicato, mostra tutti i controlli
-        available_checks = checks.get('available_checks', [])
-
-        # Applica filtri se specificati
         if category:
             available_checks = [
                 check for check in available_checks
@@ -292,30 +300,14 @@ def list_checks(
                 if os_type.lower() in [os.lower() for os in check['supported_os']]
             ]
 
-        # Se non ci sono check dopo i filtri, mostra un messaggio
-        if not available_checks:
-            console.print("[yellow]No checks found matching the specified criteria.[/yellow]")
-
-            # Se nessun filtro è stato applicato, mostra tutti i controlli disponibili nel sistema
-            if not category and not os_type:
-                console.print("\n[bold]All Available Checks:[/bold]")
-                available_checks = registry.get_registry_info().get('available_checks', [])
-
-        # Crea una tabella per visualizzare i controlli
-        table = Table(title="Security Checks")
-        table.add_column("Check ID", style="cyan")
-        table.add_column("Name", style="green")
-        table.add_column("Category", style="yellow")
-        table.add_column("Severity", style="red")
-        table.add_column("Supported OS", style="blue")
-
+        # Aggiungi i controlli alla tabella
         for check in available_checks:
             table.add_row(
                 check.get('id', 'N/A'),
                 check.get('name', 'N/A'),
                 check.get('category', 'N/A'),
                 check.get('severity', 'N/A'),
-                ", ".join(check.get('supported_os', [])) if check.get('supported_os') else 'N/A'
+                ", ".join(check.get('supported_os', []))
             )
 
         # Stampa la tabella
@@ -324,10 +316,15 @@ def list_checks(
         # Stampa il numero totale di controlli
         console.print(f"\n[bold]Total Checks:[/bold] {len(available_checks)}")
 
+        # Log dettagliato
+        console.print("\n[bold]Detailed Registry Log:[/bold]")
+        for category, count in registry_info['categories'].items():
+            console.print(f"- {category}: {count} checks")
+
     except Exception as e:
         console.print(f"[red]Critical Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        console.print(traceback.format_exc())
+        logger.error("Error in list_checks", exc_info=True)
         raise typer.Exit(code=1)
 
 def get_registry_info(self) -> Dict[str, any]:
@@ -371,22 +368,35 @@ def list_categories(
 ):
     """List all available check categories."""
     try:
-        from ..checks.registry import CheckRegistry
+        # Prova vari metodi di importazione
+        registry = None
 
-        registry = CheckRegistry()
+        # Metodo 1: Importazione diretta
+        try:
+            from agid_assessment_methodology.checks import registry
+        except ImportError:
+            # Metodo 2: Importazione alternativa
+            import importlib
+            try:
+                checks_module = importlib.import_module('agid_assessment_methodology.checks')
+                registry = getattr(checks_module, 'registry', None)
+            except Exception as e:
+                console.print(f"[red]Failed to import registry: {e}")
+                raise
 
-        # Verifica se il registry è vuoto
-        if len(registry) == 0:
-            console.print("[yellow]No checks are registered. Make sure checks are properly loaded.[/yellow]")
-            console.print("[dim]Tip: Check if your check modules are being imported correctly.[/dim]")
+        # Verifica che il registro sia stato importato correttamente
+        if registry is None:
+            console.print("[red]Could not find registry")
             return
 
-        categories = registry.get_categories()
+        # Raccogli le categorie
+        categories = list(registry._checks_by_category.keys())
 
         if not categories:
             console.print("[yellow]No categories found.")
             return
 
+        # Crea la tabella
         table = Table(title="Available Check Categories")
         table.add_column("Category", style="cyan")
         table.add_column("Description", style="green")
@@ -394,19 +404,21 @@ def list_categories(
         if show_counts:
             table.add_column("Check Count", style="blue")
 
-        # Definisci descrizioni per le categorie (puoi personalizzarle)
+        # Descrizioni delle categorie
         category_descriptions = {
             "system": "System configuration and security checks",
             "authentication": "Authentication and authorization checks",
             "network": "Network security and configuration checks",
+            "malware": "Malware protection and antivirus checks",
             "logging": "Logging and monitoring configuration checks",
             "compliance": "Compliance and regulatory checks",
             "encryption": "Encryption and cryptographic checks"
         }
 
+        # Aggiungi categorie alla tabella
         for category_name in sorted(categories):
             description = category_descriptions.get(category_name, "Security checks")
-            check_count = len(registry.get_checks_by_category(category_name))
+            check_count = len(registry._checks_by_category[category_name])
 
             if show_counts:
                 table.add_row(
@@ -417,6 +429,7 @@ def list_categories(
             else:
                 table.add_row(category_name, description)
 
+        # Stampa la tabella
         console.print(table)
         console.print(f"\n[dim]Total categories: {len(categories)}[/dim]")
 
@@ -426,6 +439,7 @@ def list_categories(
     except Exception as e:
         logger.error(f"List categories error: {str(e)}")
         console.print(f"[red]Failed to list categories: {str(e)}")
+        console.print(traceback.format_exc())
         raise typer.Exit(1)
 
 # Comando di debug per verificare lo stato del registry
@@ -696,7 +710,6 @@ def main():
         console.print(f"[red]Unexpected error: {str(e)}")
         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()

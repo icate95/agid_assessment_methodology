@@ -15,7 +15,7 @@ from typing import Dict, Any, List, Optional, Tuple, Set
 import ipaddress
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from ..base import BaseCheck, CheckResult
+from agid_assessment_methodology.checks.base import BaseCheck, CheckResult
 
 logger = logging.getLogger(__name__)
 

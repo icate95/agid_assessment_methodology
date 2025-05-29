@@ -3,7 +3,8 @@
 import platform
 import psutil
 from typing import Dict, Any
-from ..base import BaseCheck, CheckResult, CheckStatus
+from agid_assessment_methodology.checks.base import BaseCheck, CheckResult, CheckStatus
+
 
 
 class SystemInfoCheck(BaseCheck):

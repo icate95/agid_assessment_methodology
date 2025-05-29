@@ -28,16 +28,20 @@ class CheckRegistry:
             check: Istanza del controllo da registrare
         """
         try:
-            if check.id in self._checks:
-                logger.warning(f"Check {check.id} already registered, overwriting")
+            # if check.id in self._checks:
+            #     logger.warning(f"Check {check.id} already registered, overwriting")
+
+            # Assicurati che l'ID sia univoco
+            if not check.id:
+                check.id = check.__class__.__name__.lower().replace('check', '')
 
             self._checks[check.id] = check
             self._checks_by_category[check.category].append(check)
             self._check_classes[check.id] = type(check)
 
-            logger.info(f"Registered check: {check.id} (category: {check.category})")
+            # logger.info(f"Registered check: {check.id} (category: {check.category})")
         except Exception as e:
-            logger.error(f"Error registering check {check.id}: {e}")
+            logger.error(f"Error registering check {check}: {e}")
 
     def get_check(self, check_id: str) -> Optional[BaseCheck]:
         """
@@ -63,14 +67,6 @@ class CheckRegistry:
         """
         return self._checks_by_category.get(category, [])
 
-    # def get_all_checks(self) -> List[BaseCheck]:
-    #     """
-    #     Ottiene tutti i controlli registrati.
-    #
-    #     Returns:
-    #         Lista di tutti i controlli
-    #     """
-    #     return list(self._checks.values())
     def get_all_checks(self) -> Dict[str, List[BaseCheck]]:
         """
         Ottiene tutti i controlli registrati organizzati per categoria.
@@ -160,7 +156,7 @@ class CheckRegistry:
                 unique_checks.append(check)
 
         # Esegui i controlli
-        logger.info(f"Executing {len(unique_checks)} checks")
+        # logger.info(f"Executing {len(unique_checks)} checks")
         for check in unique_checks:
             try:
                 result = check.run(context)
@@ -181,6 +177,14 @@ class CheckRegistry:
         Returns:
             Informazioni sul registro
         """
+        # Se non ci sono controlli, restituisci una struttura vuota ma consistente
+        if not self._checks:
+            return {
+                "total_checks": 0,
+                "categories": {},
+                "available_checks": []
+            }
+
         return {
             "total_checks": len(self._checks),
             "categories": {
@@ -204,7 +208,7 @@ class CheckRegistry:
         self._checks.clear()
         self._checks_by_category.clear()
         self._check_classes.clear()
-        logger.info("Registry cleared")
+        # logger.info("Registry cleared")
 
     def __len__(self) -> int:
         return len(self._checks)

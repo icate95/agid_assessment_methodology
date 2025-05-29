@@ -16,7 +16,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
-from ..base import BaseCheck, CheckResult, CheckStatus
+from agid_assessment_methodology.checks.base import BaseCheck, CheckResult, CheckStatus
 
 logger = logging.getLogger(__name__)
 

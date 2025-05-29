@@ -28,14 +28,14 @@ classifiers = [
 ]
 license = {text = "GNU General Public License v3"}
 dependencies = [
-    # Dipendenze minimal per ora
     "typer>=0.9.0",      # Per la CLI
     "rich>=13.0.0",      # Per output colorato
     "psutil>=5.8.0",     # Per informazioni di sistema
     "jsonschema>=4.0.0", # Per validazione configurazione
-    "weasyprint>=56.0",  # Preferred for PDF generation
-    "reportlab>=3.5.0",  # Fallback for PDF generation
-    "schedule>=1.1.0",
+    "weasyprint>=56.0",  # Per generazione PDF
+    "reportlab>=3.5.0",  # Fallback per PDF
+    "schedule>=1.1.0",   # Per scheduling
+    "importlib-metadata>=4.8.0"  # Per supporto import dinamici
 ]
 requires-python = ">=3.8"
 
@@ -62,12 +62,19 @@ changelog = "https://github.com/icate95/agid_assessment_methodology/blob/master/
 homepage = "https://github.com/icate95/agid_assessment_methodology"
 
 [project.scripts]
-#agid-assessment = "agid_assessment_methodology.cli.main:app"
 agid-assessment = "agid_assessment_methodology.cli.main:main"
 agid = "agid_assessment_methodology.cli.main:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+packages = [
+    "agid_assessment_methodology",
+    "agid_assessment_methodology.checks",
+    "agid_assessment_methodology.checks.system",
+    "agid_assessment_methodology.checks.authentication",
+    "agid_assessment_methodology.checks.network",
+    "agid_assessment_methodology.checks.malware"
+]
 
 [tool.setuptools.package-data]
 "*" = ["*.*"]
