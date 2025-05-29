@@ -192,7 +192,10 @@ class Scanner:
 
         # Converte i risultati in formato compatibile con Assessment
         # E categorizza correttamente i risultati
-        categorized_results = {}
+        categorized_results = {
+            'scan_metadata': check_results.get('scan_metadata', {}),
+
+        }
 
         for check_id, check_result in check_results.items():
             result_dict = check_result.to_dict()

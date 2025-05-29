@@ -16,10 +16,6 @@ from reportlab.pdfgen import canvas as canvas
 
 logger = logging.getLogger(__name__)
 
-
-# File: src/agid_assessment_methodology/utils/reporting.py
-# Aggiungere questa funzione all'inizio del file, dopo gli import
-
 def _get_pdf_library():
     """Determina quale libreria PDF usare in base alla piattaforma."""
     import platform
@@ -101,13 +97,63 @@ class ReportGenerator:
         if self.template_dir:
             self.template_dir.mkdir(parents=True, exist_ok=True)
 
+    # def generate_report(
+    #     self,
+    #     assessment_data: Dict[str, Any],
+    #     output_path: Union[str, Path],
+    #     format_type: Union[ExportFormat, str],
+    #     template_name: Optional[str] = None,
+    #     include_raw_data: bool = False
+    # ) -> Path:
+    #     """
+    #     Genera un report dall'assessment.
+    #
+    #     Args:
+    #         assessment_data: Dati dell'assessment
+    #         output_path: Percorso di output per il report
+    #         format_type: Formato del report
+    #         template_name: Nome del template da utilizzare
+    #         include_raw_data: Se includere i dati grezzi nel report
+    #
+    #     Returns:
+    #         Percorso al file di report generato
+    #     """
+    #     # Converte il formato se necessario
+    #     if isinstance(format_type, str):
+    #         format_type = ExportFormat.from_string(format_type)
+    #
+    #     output_path = Path(output_path)
+    #
+    #     # Assicura che la directory di output esista
+    #     output_path.parent.mkdir(parents=True, exist_ok=True)
+    #
+    #     # Aggiunge l'estensione se mancante
+    #     if not output_path.suffix:
+    #         output_path = output_path.with_suffix(f".{format_type.value}")
+    #
+    #     # Prepara i dati per il report
+    #     report_data = self._prepare_report_data(assessment_data, include_raw_data)
+    #
+    #     # Genera il report nel formato richiesto
+    #     if format_type == ExportFormat.JSON:
+    #         return self._generate_json_report(report_data, output_path)
+    #     elif format_type == ExportFormat.CSV:
+    #         return self._generate_csv_report(report_data, output_path)
+    #     elif format_type == ExportFormat.HTML:
+    #         return self._generate_html_report(report_data, output_path, template_name)
+    #     elif format_type == ExportFormat.PDF:
+    #         return self._generate_pdf_report(report_data, output_path, template_name)
+    #     elif format_type == ExportFormat.XML:
+    #         return self._generate_xml_report(report_data, output_path)
+    #     else:
+    #         raise ValueError(f"Unsupported format: {format_type}")
+
     def generate_report(
-        self,
-        assessment_data: Dict[str, Any],
-        output_path: Union[str, Path],
-        format_type: Union[ExportFormat, str],
-        template_name: Optional[str] = None,
-        include_raw_data: bool = False
+            self,
+            assessment_data: Dict[str, Any],
+            output_path: Union[str, Path],
+            format_type: Union[ExportFormat, str],
+            include_raw_data: bool = False
     ) -> Path:
         """
         Genera un report dall'assessment.
@@ -116,13 +162,12 @@ class ReportGenerator:
             assessment_data: Dati dell'assessment
             output_path: Percorso di output per il report
             format_type: Formato del report
-            template_name: Nome del template da utilizzare
             include_raw_data: Se includere i dati grezzi nel report
 
         Returns:
             Percorso al file di report generato
         """
-        # Converte il formato se necessario
+        # Converti il formato se necessario
         if isinstance(format_type, str):
             format_type = ExportFormat.from_string(format_type)
 
@@ -131,26 +176,39 @@ class ReportGenerator:
         # Assicura che la directory di output esista
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Aggiunge l'estensione se mancante
+        # Assicura che l'estensione sia corretta
         if not output_path.suffix:
             output_path = output_path.with_suffix(f".{format_type.value}")
 
         # Prepara i dati per il report
-        report_data = self._prepare_report_data(assessment_data, include_raw_data)
+        try:
+            # Log dei dati grezzi in ingresso
+            logger.debug(f"Raw assessment data: {json.dumps(assessment_data, indent=2)}")
 
-        # Genera il report nel formato richiesto
-        if format_type == ExportFormat.JSON:
-            return self._generate_json_report(report_data, output_path)
-        elif format_type == ExportFormat.CSV:
-            return self._generate_csv_report(report_data, output_path)
-        elif format_type == ExportFormat.HTML:
-            return self._generate_html_report(report_data, output_path, template_name)
-        elif format_type == ExportFormat.PDF:
-            return self._generate_pdf_report(report_data, output_path, template_name)
-        elif format_type == ExportFormat.XML:
-            return self._generate_xml_report(report_data, output_path)
-        else:
-            raise ValueError(f"Unsupported format: {format_type}")
+            report_data = self._prepare_report_data(assessment_data, include_raw_data)
+
+            # Log dei dati preparati
+            logger.debug(f"Prepared report data: {json.dumps(report_data, indent=2)}")
+
+            # Genera il report nel formato richiesto
+            if format_type == ExportFormat.JSON:
+                return self._generate_json_report(report_data, output_path)
+            elif format_type == ExportFormat.CSV:
+                return self._generate_csv_report(report_data, output_path)
+            elif format_type == ExportFormat.HTML:
+                return self._generate_html_report(report_data, output_path)
+            elif format_type == ExportFormat.PDF:
+                return self._generate_pdf_report(report_data, output_path)
+            elif format_type == ExportFormat.XML:
+                return self._generate_xml_report(report_data, output_path)
+            else:
+                raise ValueError(f"Unsupported format: {format_type}")
+
+        except Exception as e:
+            logger.error(f"Error preparing report data: {str(e)}")
+            logger.error(f"Assessment data type: {type(assessment_data)}")
+            logger.error(f"Assessment data: {assessment_data}")
+            raise
 
     def _prepare_report_data(self, assessment_data: Dict[str, Any], include_raw_data: bool) -> Dict[str, Any]:
         """
@@ -325,67 +383,87 @@ class ReportGenerator:
             logger.error(f"Error generating JSON report: {str(e)}")
             raise
 
-    def _generate_csv_report(self, report_data: Dict[str, Any], output_path: Path) -> Path:
+    def _generate_csv_report(self, report_data: Union[Dict[str, Any], str], output_path: Path) -> Path:
         """Genera un report in formato CSV."""
         try:
+            # Se report_data è una stringa, prova a convertirla in dizionario
+            if isinstance(report_data, str):
+                try:
+                    report_data = json.loads(report_data)
+                except json.JSONDecodeError:
+                    logger.error(f"Unable to parse report_data string: {report_data}")
+                    raise ValueError("Invalid report data format")
+
+            # Verifica che report_data sia un dizionario
+            if not isinstance(report_data, dict):
+                logger.error(f"Invalid report data type: {type(report_data)}")
+                raise ValueError("Report data must be a dictionary")
+
             with open(output_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
 
-                # Header
-                writer.writerow(["Report Generated", report_data["metadata"]["report_generated"]])
+                # Log dei dati per debug
+                logger.debug(f"Full report data: {json.dumps(report_data, indent=2)}")
+
+                # Intestazione del report
+                writer.writerow(["AGID Assessment Methodology - Security Report"])
+
+                # Metadati di scansione
+                scan_metadata = report_data.get('scan_metadata', {})
+                writer.writerow(["Target", scan_metadata.get('target', 'N/A')])
+                writer.writerow(["Timestamp", scan_metadata.get('timestamp', 'N/A')])
+                writer.writerow(["OS Type", scan_metadata.get('os_type', 'N/A')])
+                writer.writerow(["Checks Executed", scan_metadata.get('checks_executed', 0)])
                 writer.writerow([])
 
-                # Executive Summary
-                writer.writerow(["EXECUTIVE SUMMARY"])
-                summary = report_data["executive_summary"]
-                for key, value in summary.items():
-                    writer.writerow([key.replace('_', ' ').title(), value])
-                writer.writerow([])
-
-                # Detailed Results
+                # Risultati dettagliati
                 writer.writerow(["DETAILED RESULTS"])
-                writer.writerow(
-                    ["Category", "Status", "Check Name", "Check Status", "Score", "Issues", "Recommendations"])
+                writer.writerow(["Category", "Check", "Status", "Message", "Details"])
 
-                for category in report_data["detailed_results"]:
-                    category_name = category["category"]
-                    category_status = category["status"]
+                # Itera attraverso le categorie e i check
+                for category, checks in report_data.items():
+                    if category in ['scan_metadata', 'metadata']:
+                        continue
 
-                    if not category["checks"]:
-                        writer.writerow([category_name, category_status, "", "", "", "", ""])
-                    else:
-                        for i, check in enumerate(category["checks"]):
-                            if i == 0:
-                                writer.writerow([
-                                    category_name, category_status,
-                                    check["name"], check["status"],
-                                    check.get("score", ""), check.get("issues_count", ""),
-                                    check.get("recommendations_count", "")
-                                ])
-                            else:
-                                writer.writerow([
-                                    "", "",
-                                    check["name"], check["status"],
-                                    check.get("score", ""), check.get("issues_count", ""),
-                                    check.get("recommendations_count", "")
-                                ])
+                    for check_name, check_result in checks.items():
+                        # Gestisci casi in cui check_result potrebbe non essere un dizionario
+                        if not isinstance(check_result, dict):
+                            continue
+
+                        writer.writerow([
+                            category,
+                            check_name,
+                            check_result.get('status', 'N/A'),
+                            check_result.get('message', 'No details'),
+                            json.dumps(check_result.get('details', {}))
+                        ])
+
+                # Raccomandazioni
                 writer.writerow([])
-
-                # Recommendations
                 writer.writerow(["RECOMMENDATIONS"])
-                writer.writerow(["Priority", "Check", "Description"])
-                for rec in report_data["recommendations"]:
-                    writer.writerow([
-                        rec.get("priority", ""),
-                        rec.get("check", ""),
-                        rec.get("description", "")
-                    ])
+                writer.writerow(["Category", "Check", "Recommendation"])
+
+                # Trova tutte le raccomandazioni
+                for category, checks in report_data.items():
+                    if category in ['scan_metadata', 'metadata']:
+                        continue
+
+                    for check_name, check_result in checks.items():
+                        if not isinstance(check_result, dict):
+                            continue
+
+                        recommendations = check_result.get('recommendations', [])
+                        for rec in recommendations:
+                            writer.writerow([category, check_name, rec])
 
             logger.info(f"CSV report generated: {output_path}")
             return output_path
 
         except Exception as e:
             logger.error(f"Error generating CSV report: {str(e)}")
+            # Log dell'errore dettagliato
+            logger.error(f"Report data type: {type(report_data)}")
+            logger.error(f"Report data: {report_data}")
             raise
 
     def _generate_html_report(self, report_data: Dict[str, Any], output_path: Path, template_name: Optional[str] = None) -> Path:
