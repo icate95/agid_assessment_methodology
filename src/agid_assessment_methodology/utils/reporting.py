@@ -10,8 +10,6 @@ from enum import Enum
 import tempfile
 import os
 
-# from reportlab.pdfgen import canvas as reportlab_canvas
-# import reportlab.pdfgen.canvas
 from reportlab.pdfgen import canvas as canvas
 
 logger = logging.getLogger(__name__)
@@ -96,57 +94,6 @@ class ReportGenerator:
         """Assicura che la directory dei template esista."""
         if self.template_dir:
             self.template_dir.mkdir(parents=True, exist_ok=True)
-
-    # def generate_report(
-    #     self,
-    #     assessment_data: Dict[str, Any],
-    #     output_path: Union[str, Path],
-    #     format_type: Union[ExportFormat, str],
-    #     template_name: Optional[str] = None,
-    #     include_raw_data: bool = False
-    # ) -> Path:
-    #     """
-    #     Genera un report dall'assessment.
-    #
-    #     Args:
-    #         assessment_data: Dati dell'assessment
-    #         output_path: Percorso di output per il report
-    #         format_type: Formato del report
-    #         template_name: Nome del template da utilizzare
-    #         include_raw_data: Se includere i dati grezzi nel report
-    #
-    #     Returns:
-    #         Percorso al file di report generato
-    #     """
-    #     # Converte il formato se necessario
-    #     if isinstance(format_type, str):
-    #         format_type = ExportFormat.from_string(format_type)
-    #
-    #     output_path = Path(output_path)
-    #
-    #     # Assicura che la directory di output esista
-    #     output_path.parent.mkdir(parents=True, exist_ok=True)
-    #
-    #     # Aggiunge l'estensione se mancante
-    #     if not output_path.suffix:
-    #         output_path = output_path.with_suffix(f".{format_type.value}")
-    #
-    #     # Prepara i dati per il report
-    #     report_data = self._prepare_report_data(assessment_data, include_raw_data)
-    #
-    #     # Genera il report nel formato richiesto
-    #     if format_type == ExportFormat.JSON:
-    #         return self._generate_json_report(report_data, output_path)
-    #     elif format_type == ExportFormat.CSV:
-    #         return self._generate_csv_report(report_data, output_path)
-    #     elif format_type == ExportFormat.HTML:
-    #         return self._generate_html_report(report_data, output_path, template_name)
-    #     elif format_type == ExportFormat.PDF:
-    #         return self._generate_pdf_report(report_data, output_path, template_name)
-    #     elif format_type == ExportFormat.XML:
-    #         return self._generate_xml_report(report_data, output_path)
-    #     else:
-    #         raise ValueError(f"Unsupported format: {format_type}")
 
     def generate_report(
             self,
@@ -723,7 +670,7 @@ class ReportGenerator:
             raise
 
     def _generate_xml_report(self, report_data: Dict[str, Any], output_path: Path) -> Path:
-        """Genera un report in formato XML."""
+        """Genera un report in formato XML con struttura completa."""
         try:
             import xml.etree.ElementTree as ET
 
@@ -732,47 +679,95 @@ class ReportGenerator:
 
             # Metadata
             metadata = ET.SubElement(root, "metadata")
-            for key, value in report_data["metadata"].items():
+            for key, value in report_data.get("metadata", {}).items():
                 elem = ET.SubElement(metadata, key)
                 elem.text = str(value)
 
             # Executive Summary
             exec_summary = ET.SubElement(root, "executive_summary")
-            for key, value in report_data["executive_summary"].items():
-                elem = ET.SubElement(exec_summary, key)
+            summary_data = report_data.get("executive_summary", {})
+            for key, value in summary_data.items():
+                elem = ET.SubElement(exec_summary, key.replace(" ", "_").lower())
                 elem.text = str(value)
 
             # Detailed Results
-            detailed = ET.SubElement(root, "detailed_results")
-            for category in report_data["detailed_results"]:
-                cat_elem = ET.SubElement(detailed, "category")
-                cat_elem.set("name", category["category"])
-                cat_elem.set("status", category["status"])
+            detailed_results = ET.SubElement(root, "detailed_results")
+            for result in report_data.get("detailed_results", []):
+                category_elem = ET.SubElement(detailed_results, "category")
+                category_elem.set("name", result.get("category", ""))
+                category_elem.set("status", result.get("status", ""))
 
-                for check in category["checks"]:
-                    check_elem = ET.SubElement(cat_elem, "check")
-                    check_elem.set("name", check["name"])
-                    check_elem.set("status", check["status"])
-                    if check.get("score") is not None:
-                        check_elem.set("score", str(check["score"]))
+                for check in result.get("checks", []):
+                    check_elem = ET.SubElement(category_elem, "check")
+                    check_elem.set("name", check.get("name", ""))
+                    check_elem.set("status", check.get("status", ""))
+
+                    # Aggiungi dettagli aggiuntivi
+                    score_elem = ET.SubElement(check_elem, "score")
+                    score_elem.text = str(check.get("score", "N/A"))
+
+                    issues_count_elem = ET.SubElement(check_elem, "issues_count")
+                    issues_count_elem.text = str(check.get("issues_count", 0))
+
+                    recommendations_count_elem = ET.SubElement(check_elem, "recommendations_count")
+                    recommendations_count_elem.text = str(check.get("recommendations_count", 0))
 
             # Recommendations
             recommendations = ET.SubElement(root, "recommendations")
-            for rec in report_data["recommendations"]:
+            for rec in report_data.get("recommendations", []):
                 rec_elem = ET.SubElement(recommendations, "recommendation")
-                rec_elem.set("priority", rec.get("priority", ""))
+                rec_elem.set("priority", rec.get("priority", "medium"))
                 rec_elem.set("check", rec.get("check", ""))
+                rec_elem.set("category", rec.get("category", ""))
                 rec_elem.text = rec.get("description", "")
 
-            # Scrive il file XML
+            # Compliance Summary
+            compliance_summary = ET.SubElement(root, "compliance_summary")
+            compliance_data = report_data.get("compliance_summary", {})
+
+            for level in ["basic", "standard", "advanced"]:
+                level_elem = ET.SubElement(compliance_summary, f"{level}_compliance")
+                level_details = compliance_data.get(f"{level}_compliance", {})
+
+                for key, value in level_details.items():
+                    detail_elem = ET.SubElement(level_elem, key.replace(" ", "_").lower())
+                    detail_elem.text = str(value)
+
+            overall_score_elem = ET.SubElement(compliance_summary, "overall_compliance_score")
+            overall_score_elem.text = str(compliance_data.get("overall_compliance_score", 0.0))
+
+            # Risk Analysis
+            risk_analysis = ET.SubElement(root, "risk_analysis")
+            risk_data = report_data.get("risk_analysis", {})
+
+            overall_risk_elem = ET.SubElement(risk_analysis, "overall_risk_level")
+            overall_risk_elem.text = str(risk_data.get("overall_risk_level", "unknown"))
+
+            risk_factors = ET.SubElement(risk_analysis, "risk_factors")
+            for factor, value in risk_data.get("risk_factors", {}).items():
+                factor_elem = ET.SubElement(risk_factors, factor.replace(" ", "_").lower())
+                factor_elem.text = str(value)
+
+            risk_mitigation = ET.SubElement(risk_analysis, "risk_mitigation_priority")
+            for priority in risk_data.get("risk_mitigation_priority", []):
+                priority_elem = ET.SubElement(risk_mitigation, "priority")
+                priority_elem.text = str(priority)
+
+            # Raw Data (opzionale)
+            if "raw_data" in report_data:
+                raw_data = ET.SubElement(root, "raw_data")
+                raw_data_elem = ET.SubElement(raw_data, "full_assessment_data")
+                raw_data_elem.text = json.dumps(report_data["raw_data"], indent=2)
+
+            # Crea l'albero XML
             tree = ET.ElementTree(root)
 
-            # Fallback per ET.indent (non disponibile in Python < 3.9)
+            # Indentazione
             if hasattr(ET, 'indent'):
                 ET.indent(tree, space="  ", level=0)
             else:
-                # Implementazione manuale dell'indentazione per Python < 3.9
-                self._indent_xml(root, level=0)
+                # Fallback per versioni precedenti
+                self._indent_xml(root)
 
             # Scrivi il file
             tree.write(output_path, encoding='utf-8', xml_declaration=True)
