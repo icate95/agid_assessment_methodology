@@ -260,40 +260,36 @@ class ReportGenerator:
     def _format_detailed_results(self, assessment_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Formatta i risultati dettagliati per categoria."""
         detailed_results = []
-        categories = assessment_data.get("categories", {})
 
-        for category_name, category_data in categories.items():
+        # Rimuovi scan_metadata e raw_data se presenti
+        if 'scan_metadata' in assessment_data:
+            assessment_data.pop('scan_metadata')
+        if 'raw_data' in assessment_data:
+            assessment_data.pop('raw_data')
+
+        for category_name, category_data in assessment_data.items():
             category_result = {
                 "category": category_name,
-                "status": category_data.get("status", "unknown"),
+                "status": "pass",  # Default status
                 "checks": []
             }
 
-            # Estrae i dettagli dai risultati grezzi se disponibili
-            if "details" in assessment_data:
-                category_checks = assessment_data["details"].get(category_name, {})
-                for check_name, check_data in category_checks.items():
-                    if check_name != "scan_metadata":
-                        # Verifica che check_data sia un dizionario
-                        if isinstance(check_data, dict):
-                            check_result = {
-                                "name": check_name,
-                                "status": check_data.get("status", "unknown"),
-                                "score": check_data.get("score"),
-                                "issues_count": len(check_data.get("issues", [])),
-                                "recommendations_count": len(check_data.get("recommendations", []))
-                            }
-                        else:
-                            # Se check_data non è un dizionario, crea una struttura base
-                            check_result = {
-                                "name": check_name,
-                                "status": "unknown",
-                                "score": None,
-                                "issues_count": 0,
-                                "recommendations_count": 0
-                            }
+            for check_name, check_data in category_data.items():
+                # Verifica che check_data sia un dizionario
+                if isinstance(check_data, dict):
+                    check_result = {
+                        "name": check_name,
+                        "status": check_data.get("status", "unknown"),
+                        "score": check_data.get("score"),
+                        "issues_count": len(check_data.get("issues", [])),
+                        "recommendations_count": len(check_data.get("recommendations", []))
+                    }
 
-                        category_result["checks"].append(check_result)
+                    # Aggiorna lo status della categoria se trova un check che non è "pass"
+                    if check_result["status"] != "pass":
+                        category_result["status"] = check_result["status"]
+
+                    category_result["checks"].append(check_result)
 
             detailed_results.append(category_result)
 
@@ -301,7 +297,25 @@ class ReportGenerator:
 
     def _extract_recommendations(self, assessment_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Estrae e prioritizza le raccomandazioni."""
-        recommendations = assessment_data.get("recommendations", [])
+        recommendations = []
+
+        # Rimuovi scan_metadata e raw_data se presenti
+        if 'scan_metadata' in assessment_data:
+            assessment_data.pop('scan_metadata')
+        if 'raw_data' in assessment_data:
+            assessment_data.pop('raw_data')
+
+        for category_name, category_data in assessment_data.items():
+            for check_name, check_data in category_data.items():
+                if isinstance(check_data, dict):
+                    check_recommendations = check_data.get("recommendations", [])
+                    for rec in check_recommendations:
+                        recommendations.append({
+                            "check": check_name,
+                            "category": category_name,
+                            "description": rec,
+                            "priority": "medium"  # Default priority
+                        })
 
         # Ordina per priorità
         priority_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -409,52 +423,83 @@ class ReportGenerator:
                 writer.writerow(["AGID Assessment Methodology - Security Report"])
 
                 # Metadati di scansione
-                scan_metadata = report_data.get('scan_metadata', {})
-                writer.writerow(["Target", scan_metadata.get('target', 'N/A')])
-                writer.writerow(["Timestamp", scan_metadata.get('timestamp', 'N/A')])
-                writer.writerow(["OS Type", scan_metadata.get('os_type', 'N/A')])
-                writer.writerow(["Checks Executed", scan_metadata.get('checks_executed', 0)])
+                scan_metadata = report_data.get('executive_summary', {})
+                writer.writerow(["Target", scan_metadata.get('target_system', 'N/A')])
+                writer.writerow(["Timestamp", scan_metadata.get('scan_timestamp', 'N/A')])
+                writer.writerow(["total_checks", scan_metadata.get('total_checks', 'N/A')])
+                writer.writerow(["success_rate", scan_metadata.get('success_rate', 'N/A')])
+                writer.writerow(["overall_risk_level", scan_metadata.get('overall_risk_level', 'N/A')])
+                writer.writerow(["critical_issues", scan_metadata.get('critical_issues', 'N/A')])
+                writer.writerow(["high_priority_recommendations", scan_metadata.get('high_priority_recommendations', 'N/A')])
+
                 writer.writerow([])
 
                 # Risultati dettagliati
                 writer.writerow(["DETAILED RESULTS"])
                 writer.writerow(["Category", "Check", "Status", "Message", "Details"])
 
-                # Itera attraverso le categorie e i check
-                for category, checks in report_data.items():
-                    if category in ['scan_metadata', 'metadata']:
-                        continue
+                # Itera i check attraverso le categorie e i check
+                for result in report_data.get('detailed_results', []):
+                    category = result.get('category', 'N/A')
 
-                    for check_name, check_result in checks.items():
-                        # Gestisci casi in cui check_result potrebbe non essere un dizionario
-                        if not isinstance(check_result, dict):
-                            continue
-
+                    for check in result.get('checks', []):
                         writer.writerow([
                             category,
-                            check_name,
-                            check_result.get('status', 'N/A'),
-                            check_result.get('message', 'No details'),
-                            json.dumps(check_result.get('details', {}))
+                            check.get('name', 'N/A'),
+                            check.get('status', 'N/A'),
+                            check.get('score', 'N/A'),
+                            check.get('issues_count', 'N/A'),
+                            check.get('recommendations_count', 'N/A'),
                         ])
 
                 # Raccomandazioni
                 writer.writerow([])
                 writer.writerow(["RECOMMENDATIONS"])
-                writer.writerow(["Category", "Check", "Recommendation"])
+                writer.writerow(["Category", "Check", "Recommendation", "Priority"])
 
                 # Trova tutte le raccomandazioni
-                for category, checks in report_data.items():
-                    if category in ['scan_metadata', 'metadata']:
-                        continue
+                for result in report_data.get('recommendations', []):
+                    # if category in ['scan_metadata', 'metadata']:
+                    #     continue
 
-                    for check_name, check_result in checks.items():
-                        if not isinstance(check_result, dict):
-                            continue
+                    # for check_name, check_result in checks.items():
+                    #     if not isinstance(check_result, dict):
+                    #         continue
+                    #
+                    #     recommendations = check_result.get('recommendations', [])
+                    #     for rec in recommendations:
+                    #         writer.writerow([category, check_name, rec])
 
-                        recommendations = check_result.get('recommendations', [])
-                        for rec in recommendations:
-                            writer.writerow([category, check_name, rec])
+                    writer.writerow([
+                        result.get('category', 'N/A'),
+                        result.get('check', 'N/A'),
+                        result.get('description', 'N/A'),
+                        result.get('priority', 'N/A'),
+                    ])
+
+                writer.writerow([])
+                writer.writerow(["RAW DATA"])
+                raw_data = report_data.get('raw_data', {})
+
+                # Itera su ogni categoria nei raw data
+                for category, checks in raw_data.items():
+                    writer.writerow([])
+                    writer.writerow([f"CATEGORY: {category.upper()}"])
+                    writer.writerow(["Check", "Status", "Message", "Score", "Timestamp"])
+
+                    # Itera su ogni check nella categoria
+                    for check_name, check_data in checks.items():
+                        writer.writerow([
+                            check_name,
+                            check_data.get('status', 'N/A'),
+                            check_data.get('message', 'N/A'),
+                            check_data.get('detail', 'N/A'),
+                            check_data.get('issue', 'N/A'),
+                            check_data.get('recommendations', 'N/A'),
+                            check_data.get('score', 'N/A'),
+                            check_data.get('timestamp', 'N/A')
+                            # check_data
+                        ])
 
             logger.info(f"CSV report generated: {output_path}")
             return output_path
@@ -466,24 +511,65 @@ class ReportGenerator:
             logger.error(f"Report data: {report_data}")
             raise
 
-    def _generate_html_report(self, report_data: Dict[str, Any], output_path: Path, template_name: Optional[str] = None) -> Path:
+    def _generate_html_report(self, report_data: Dict[str, Any], output_path: Path,
+                              template_name: Optional[str] = None) -> Path:
         """Genera un report in formato HTML."""
         try:
             # Template HTML di base
             html_template = self._get_html_template(template_name)
 
+            # Preparazione dei dati per il report
+            scan_metadata = report_data.get('executive_summary', {})
+
+            # Formatta la sezione Raw Data
+            def format_raw_data(raw_data: Dict[str, Any]) -> str:
+                raw_html = "<div class='raw-data-section'>"
+                raw_html += "<h3>Raw Data</h3>"
+
+                for category, checks in raw_data.items():
+                    raw_html += f"<h4>Category: {category.upper()}</h4>"
+                    raw_html += "<table class='raw-data-table'>"
+                    raw_html += ("<tr>"
+                                 "<th>Check</th>"
+                                 "<th>Status</th>"
+                                 "<th>Message</th>"
+                                 "<th>Details</th>"
+                                 "<th>Issue</th>"
+                                 "<th>Recommendations</th>"
+                                 "<th>Score</th>"
+                                 "<th>Timestamp</th>"
+                                 "</tr>")
+
+                    for check_name, check_data in checks.items():
+                        raw_html += "<tr>"
+                        raw_html += f"<td>{check_name}</td>"
+                        raw_html += f"<td>{check_data.get('status', 'N/A')}</td>"
+                        raw_html += f"<td>{check_data.get('message', 'N/A')}</td>"
+                        raw_html += f"<td>{check_data.get('score', 'N/A')}</td>"
+                        raw_html += f"<td>{check_data.get('issue', 'N/A')}</td>"
+                        raw_html += f"<td>{check_data.get('recommendations', 'N/A')}</td>"
+                        raw_html += f"<td>{check_data.get('score', 'N/A')}</td>"
+                        raw_html += f"<td>{check_data.get('timestamp', 'N/A')}</td>"
+                        raw_html += "</tr>"
+
+                    raw_html += "</table>"
+
+                raw_html += "</div>"
+                return raw_html
+
             # Sostituisce i placeholder con i dati reali
             html_content = html_template.format(
                 title="AGID Security Assessment Report",
-                generated_date=report_data["metadata"]["report_generated"],
-                target=report_data["executive_summary"]["target_system"],
-                risk_level=report_data["executive_summary"]["overall_risk_level"],
-                success_rate=report_data["executive_summary"]["success_rate"],
-                total_checks=report_data["executive_summary"]["total_checks"],
-                critical_issues=report_data["executive_summary"]["critical_issues"],
-                detailed_results=self._format_html_detailed_results(report_data["detailed_results"]),
-                recommendations=self._format_html_recommendations(report_data["recommendations"]),
-                compliance_summary=self._format_html_compliance(report_data["compliance_summary"])
+                generated_date=report_data.get("metadata", {}).get("report_generated", "N/A"),
+                target=scan_metadata.get("target_system", "N/A"),
+                risk_level=scan_metadata.get("overall_risk_level", "N/A"),
+                success_rate=scan_metadata.get("success_rate", "N/A"),
+                total_checks=scan_metadata.get("total_checks", "N/A"),
+                critical_issues=scan_metadata.get("critical_issues", "N/A"),
+                detailed_results=self._format_html_detailed_results(report_data.get("detailed_results", [])),
+                recommendations=self._format_html_recommendations(report_data.get("recommendations", [])),
+                compliance_summary=self._format_html_compliance(report_data.get("compliance_summary", {})),
+                raw_data=format_raw_data(report_data.get("raw_data", {}))
             )
 
             with open(output_path, 'w', encoding='utf-8') as f:
@@ -723,99 +809,163 @@ class ReportGenerator:
 
         # Template HTML di default
         return """
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }}
-        .header {{ background-color: #2c3e50; color: white; padding: 20px; border-radius: 5px; }}
-        .section {{ margin: 30px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }}
-        .summary-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }}
-        .summary-card {{ background: #f8f9fa; padding: 15px; border-radius: 5px; text-align: center; }}
-        .risk-critical {{ color: #dc3545; font-weight: bold; }}
-        .risk-high {{ color: #fd7e14; font-weight: bold; }}
-        .risk-medium {{ color: #ffc107; font-weight: bold; }}
-        .risk-low {{ color: #28a745; font-weight: bold; }}
-        table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
-        th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
-        th {{ background-color: #f2f2f2; }}
-        .status-pass {{ color: #28a745; }}
-        .status-fail {{ color: #dc3545; }}
-        .status-warning {{ color: #ffc107; }}
-        .footer {{ margin-top: 40px; text-align: center; color: #666; }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>{title}</h1>
-        <p>Generated: {generated_date}</p>
-        <p>Target System: {target}</p>
-    </div>
-
-    <div class="section">
-        <h2>Executive Summary</h2>
-        <div class="summary-grid">
-            <div class="summary-card">
-                <h3>Overall Risk Level</h3>
-                <p class="risk-{risk_level}">{risk_level}</p>
-            </div>
-            <div class="summary-card">
-                <h3>Success Rate</h3>
-                <p>{success_rate}%</p>
-            </div>
-            <div class="summary-card">
-                <h3>Total Checks</h3>
-                <p>{total_checks}</p>
-            </div>
-            <div class="summary-card">
-                <h3>Critical Issues</h3>
-                <p class="risk-critical">{critical_issues}</p>
-            </div>
+    <!DOCTYPE html>
+    <html lang="it">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{title}</title>
+        <style>
+            body {{ 
+                font-family: Arial, sans-serif; 
+                line-height: 1.6; 
+                max-width: 1200px; 
+                margin: 0 auto; 
+                padding: 20px; 
+                background-color: #f4f4f4; 
+            }}
+            .header {{ 
+                background-color: #2c3e50; 
+                color: white; 
+                padding: 20px; 
+                text-align: center; 
+                margin-bottom: 20px; 
+            }}
+            .section {{ 
+                background-color: white; 
+                border-radius: 5px; 
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+                padding: 20px; 
+                margin-bottom: 20px; 
+            }}
+            table {{ 
+                width: 100%; 
+                border-collapse: collapse; 
+                margin-bottom: 20px; 
+            }}
+            th, td {{ 
+                border: 1px solid #ddd; 
+                padding: 12px; 
+                text-align: left; 
+            }}
+            th {{ 
+                background-color: #f2f2f2; 
+            }}
+            .status-pass {{ color: green; }}
+            .status-fail {{ color: red; }}
+            .status-warning {{ color: orange; }}
+            .detailed-results-table {{ width: 100%;
+                border-collapse: collapse;
+            }}
+            .detailed-results-table th, 
+            .detailed-results-table td {{
+                border: 1px solid #ddd;
+                padding: 8px;
+                text-align: left;
+            }}
+            .detailed-results-table th {{
+                background-color: #f2f2f2;
+            }}
+            .status-pass {{ color: green; }}
+            .status-warning {{ color: orange; }}
+            .status-error {{ color: red; }}
+            .status-skipped {{ color: gray; }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>{title}</h1>
+            <p>Generated: {generated_date}</p>
         </div>
-    </div>
 
-    <div class="section">
-        <h2>Detailed Results</h2>
-        {detailed_results}
-    </div>
+        <div class="section">
+            <h2>Executive Summary</h2>
+            <table>
+                <tr>
+                    <th>Target</th>
+                    <td>{target}</td>
+                </tr>
+                <tr>
+                    <th>Risk Level</th>
+                    <td>{risk_level}</td>
+                </tr>
+                <tr>
+                    <th>Success Rate</th>
+                    <td>{success_rate}%</td>
+                </tr>
+                <tr>
+                    <th>Total Checks</th>
+                    <td>{total_checks}</td>
+                </tr>
+                <tr>
+                    <th>Critical Issues</th>
+                    <td>{critical_issues}</td>
+                </tr>
+            </table>
+        </div>
 
-    <div class="section">
-        <h2>Recommendations</h2>
-        {recommendations}
-    </div>
+        <div class="section">
+            <h2>Detailed Results</h2>
+            {detailed_results}
+        </div>
 
-    <div class="section">
-        <h2>Compliance Summary</h2>
-        {compliance_summary}
-    </div>
+        <div class="section">
+            <h2>Recommendations</h2>
+            {recommendations}
+        </div>
 
-    <div class="footer">
-        <p>Report generated by AGID Assessment Methodology v0.1.0</p>
-    </div>
-</body>
-</html>
+        <div class="section">
+            <h2>Compliance Summary</h2>
+            {compliance_summary}
+        </div>
+
+        <div class="section">
+            {raw_data}
+        </div>
+    </body>
+    </html>
         """
 
     def _format_html_detailed_results(self, detailed_results: List[Dict[str, Any]]) -> str:
         """Formatta i risultati dettagliati per HTML."""
-        html = "<table><tr><th>Category</th><th>Status</th><th>Checks</th></tr>"
+        html = """
+        <table class='detailed-results-table'>
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th>Check</th>
+                    <th>Status</th>
+                    <th>Score</th>
+                    <th>Issues Count</th>
+                    <th>Recommendations Count</th>
+                </tr>
+            </thead>
+            <tbody>
+        """
 
-        for category in detailed_results:
-            checks_count = len(category["checks"])
-            status_class = f"status-{category['status'].lower()}"
+        for result in detailed_results:
+            category = result.get('category', 'N/A')
 
-            html += f"""
-            <tr>
-                <td>{category['category'].title()}</td>
-                <td class="{status_class}">{category['status'].title()}</td>
-                <td>{checks_count} checks</td>
-            </tr>
-            """
+            for check in result.get('checks', []):
+                status = check.get('status', 'N/A')
+                status_class = f"status-{status.lower()}"
 
-        html += "</table>"
+                html += f"""
+                <tr>
+                    <td>{category}</td>
+                    <td>{check.get('name', 'N/A')}</td>
+                    <td class="{status_class}">{status}</td>
+                    <td>{check.get('score', 'N/A')}</td>
+                    <td>{check.get('issues_count', 0)}</td>
+                    <td>{check.get('recommendations_count', 0)}</td>
+                </tr>
+                """
+
+        html += """
+            </tbody>
+        </table>
+        """
+
         return html
 
     def _format_html_recommendations(self, recommendations: List[Dict[str, Any]]) -> str:
