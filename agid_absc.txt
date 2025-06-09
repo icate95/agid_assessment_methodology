@@ -1,0 +1,701 @@
+-   1.1 Implementare un inventario delle risorse attive correlato a
+    quello ABSC 1.4
+
+    -   Script py -- librerie utilizzate
+
+        -   nmap-python per network discovery
+
+        -   scapy per network scanning
+
+    -   API di OpenVAS per vulnerability assessment
+
+    -   Salvataggio su db locale
+
+-   1.2 Implementare ABSC 1.1.1 attraverso uno strumento automatico
+
+    -   Script Python con schedule per automazione dello script al punto
+        1.1
+
+    -   Oppure watchdog per analisi nuovi elementi trovati
+
+    -   Aggiornamento database
+
+-   1.3 Effettuare il discovery dei dispositivi collegati alla rete con
+    allarmi in caso di anomalie.
+
+    -   scapy per passive network monitoring
+
+    -   Collegare smtp per alert via mail o via messaggio (oppure bot di
+        chat come discord, telegramo, \...)
+
+    -   Aggiornamento database
+
+-   1.4 Qualificare i sistemi connessi alla rete attraverso l'analisi
+    del loro traffico.
+
+    -   Libreria pyshark per packet analysis
+
+    -   Machine learning con scikit-learn per traffic classification
+
+-   2.1 Implementare il "logging" delle operazione del server DHCP.
+
+    -   scapy per DHCP monitoring
+
+    -   parser DHCP con python-dhcp
+
+    -   Aggiornamento database
+
+-   2.2 Utilizzare le informazioni ricavate dal "logging" DHCP per
+    migliorare l'inventario delle risorse e identificare le risorse non
+    ancora censite.
+
+    -   pandas per log analysis
+
+-   3.1 Aggiornare l'inventario quando nuovi dispositivi approvati
+    vengono collegati in rete.
+
+    -   Aggiornamento tabella log (database sqllite)
+
+-   3.2 Aggiornare l'inventario con uno strumento automatico quando
+    nuovi dispositivi approvati vengono collegati in rete.
+
+    -   Watchdog per analizzare ogni nuovo elemento
+
+-   4.1 Gestire l'inventario delle risorse di tutti i sistemi collegati
+    alla rete e dei dispositivi di rete stessi, registrando almeno
+    l'indirizzo IP.
+
+    -   Python script con ipaddress module
+
+-   4.2 Per tutti i dispositivi che possiedono un indirizzo IP
+    l'inventario deve indicare i nomi delle macchine, la funzione del
+    sistema, un titolare responsabile della risorsa e l'ufficio
+    associato. L'inventario delle risorse creato deve inoltre includere
+    informazioni sul fatto che il dispositivo sia portatile e/o
+    personale.
+
+    -   Tabella db appositamente creata
+
+-   4.3 Dispositivi come telefoni cellulari, tablet, laptop e altri
+    dispositivi elettronici portatili che memorizzano o elaborano dati
+    devono essere identificati, a prescindere che siano collegati o meno
+    alla rete dell'organizzazione.
+
+    -   Tabella db appositamente creata
+
+-   5.1 Installare un'autenticazione a livello di rete via 802.1x per
+    limitare e controllare quali dispositivi possono essere connessi
+    alla rete. L'802.1x deve essere correlato ai dati dell'inventario
+    per distinguere i sistemi autorizzati da quelli non autorizzati.
+
+    -   RADIUS: py-radius per controllare se la rete è protetta da
+        autenticazione. Forse anche altro ?
+
+-   6.1 Utilizzare i certificati lato client per validare e autenticare
+    i sistemi prima della connessione a una rete locale.
+
+    -   Python cryptography for cert management\\n- Integration with
+        Let\'s Encrypt\\n- Custom PKI system
+
+Software
+
+-   1.1 Stilare un elenco di software autorizzati e relative versioni
+    necessari per ciascun tipo di sistema, compresi server, workstation
+    e laptop di vari tipi e per diversi usi. Non consentire
+    l'istallazione di software non compreso nell'elenco.
+
+    -   Psutil per process monitoring
+
+    -   Osquery
+
+    -   Custom db table
+
+-   2.1 Implementare una "whitelist" delle applicazioni autorizzate,
+    bloccando l'esecuzione del software non incluso nella lista. La
+    "whitelist" può essere molto ampia per includere i software più
+    diffusi.
+
+    -   Integration con endpoint protection
+
+    -   Python script per enforcement
+
+    -   Db con whitelist
+
+-   2.2 Per sistemi con funzioni specifiche (che richiedono solo un
+    piccolo numero di programmi per funzionare), la "whitelist" può
+    essere più mirata. Quando si proteggono i sistemi con software
+    personalizzati che può essere difficile inserire nella "whitelist",
+    ricorrere al punto ABSC 2.4.1 (isolando il software personalizzato
+    in un sistema operativo virtuale).
+
+    -   Whitelist specifica
+
+-   2.3 Utilizzare strumenti di verifica dell'integrità dei file per
+    verificare che le applicazioni nella "whitelist" non siano state
+    modificate.
+
+    -   Python con hashlib per file hashing
+
+-   3.1 Eseguire regolari scansioni sui sistemi al fine di rilevare la
+    presenza di software non autorizzato.
+
+    -   Python script con psutil
+
+    -   Custom scanner
+
+-   3.2 Mantenere un inventario del software in tutta l'organizzazione
+    che copra tutti i tipi di sistemi operativi in uso, compresi server,
+    workstation e laptop.
+
+    -   Db con informazioni di inventario
+
+-   3.3 Installare strumenti automatici d'inventario del software che
+    registrino anche la versione del sistema operativo utilizzato nonché
+    le applicazioni installate, le varie versioni ed il livello di
+    patch.
+
+    -   Strumento di sw discovery -- integrazione con vulnerability
+        scanner
+
+-   4.1 Utilizzare macchine virtuali e/o sistemi air-gapped per isolare
+    ed eseguire applicazioni necessarie per operazioni strategiche o
+    critiche dell'Ente, che a causa dell'elevato rischio non devono
+    essere installate in ambienti direttamente collegati in rete.
+
+Config
+
+-   1.1 Utilizzare configurazioni sicure standard per la protezione dei
+    sistemi operativi
+
+    -   Python script per config management
+
+-   Custom hardening scripts1.2 Le configurazioni sicure standard devono
+    corrispondere alle versioni "hardened" del sistema operativo e delle
+    applicazioni installate. La procedura di hardening comprende
+    tipicamente: eliminazione degli account non necessari (compresi gli
+    account di servizio), disattivazione o eliminazione dei servizi non
+    necessari, configurazione di stack e heaps non eseguibili,
+    applicazione di patch, chiusura di porte di rete aperte e non
+    utilizzate.
+
+    -   Custom security baselines
+
+    -   Automated compliance checking
+
+-   1.3 Assicurare con regolarità la validazione e l'aggiornamento delle
+    immagini d'installazione nella loro configurazione di sicurezza
+    anche in considerazione delle più recenti vulnerabilità e vettori di
+    attacco.
+
+    -   Integration con vulnerability scanners
+
+-   2.1 Definire ed impiegare una configurazione standard per
+    workstation, server e altri tipi di sistemi usati
+    dall'organizzazione.
+
+    -   Custom compliance checker
+
+    -   Template-based deployment
+
+-   2.2 Eventuali sistemi in esercizio che vengano compromessi devono
+    essere ripristinati utilizzando la configurazione standard.
+
+    -   Backup automation
+
+    -   Configuration versioning
+
+    -   Automated recovery scripts
+
+-   2.3 Le modifiche alla configurazione standard devono effettuate
+    secondo le procedure di gestione dei cambiamenti.
+
+    -   Automated approval process
+
+-   3.1 Le immagini d'installazione devono essere memorizzate offline
+
+    -   Parzialmente automatizzabile
+
+    -   Automated backup system
+
+    -   Secure storage management
+
+-   3.2 Le immagini d'installazione sono conservate in modalità
+    protetta, garantendone l'integrità e la disponibilità solo agli
+    utenti autorizzati.
+
+    -   Encryption automation
+
+    -   Integrity verification
+
+-   4.1 Eseguire tutte le operazioni di amministrazione remota di
+    server, workstation, dispositivi di rete e analoghe apparecchiature
+    per mezzo di connessioni protette (protocolli intrinsecamente
+    sicuri, ovvero su canali sicuri).
+
+    -   Secure tunnel automation
+
+    -   Custom remote access solution
+
+    -   Access logging system
+
+-   5.1 Utilizzare strumenti di verifica dell'integrità dei file per
+    assicurare che i file critici del sistema (compresi eseguibili di
+    sistema e delle applicazioni sensibili, librerie e configurazioni)
+    non siano stati alterati.
+
+    -   Custom integrity checker
+
+-   5.2 Nel caso in cui la verifica di cui al punto precedente venga
+    eseguita da uno strumento automatico, per qualunque alterazione di
+    tali file deve essere generato un alert.
+
+    -   Real-time monitoring + notification system
+
+-   5.3 Per il supporto alle analisi, il sistema di segnalazione deve
+    essere in grado di mostrare la cronologia dei cambiamenti della
+    configurazione nel tempo e identificare chi ha eseguito ciascuna
+    modifica.
+
+    -   Change logging system
+
+-   5.4 I controlli di integrità devono inoltre identificare le
+    alterazioni sospette del sistema, delle variazioni dei permessi di
+    file e cartelle.
+
+    -   Permission monitoring
+
+    -   Access control verification
+
+    -   Change detection system
+
+-   6.1 Utilizzare un sistema centralizzato di controllo automatico
+    delle configurazioni che consenta di rilevare e segnalare le
+    modifiche non autorizzate.
+
+    -   Central management system
+
+    -   Configuration automation
+
+    -   Change tracking
+
+-   7.1 Utilizzare strumenti di gestione della configurazione dei
+    sistemi che consentano il ripristino delle impostazioni di
+    configurazione standard.
+
+    -   Automated rollback
+
+    -   Configuration versioning
+
+    -   Recovery automation
+
+Vulnerability
+
+-   1.1 Ad ogni modifica significativa della configurazione eseguire la
+    ricerca delle vulnerabilità su tutti i sistemi in rete con strumenti
+    automatici che forniscano a ciascun amministratore di sistema report
+    con indicazioni delle vulnerabilità più critiche.
+
+-   1.2 Eseguire periodicamente la ricerca delle vulnerabilità ABSC
+    4.1.1 con frequenza commisurata alla complessità
+    dell'infrastruttura. 1.3 Usare uno SCAP (Security Content Automation
+    Protocol) di validazione della vulnerabilità che rilevi sia le
+    vulnerabilità basate sul codice (come quelle descritte dalle voci
+    Common Vulnerabilities ed Exposures) che quelle basate sulla
+    configurazione (come elencate nel Common Configuration Enumeration
+    Project).
+
+-   2.1 Correlare i log di sistema con le informazioni ottenute dalle
+    scansioni delle vulnerabilità.
+
+    -   Log analysis engine
+
+    -   Correlation system
+
+    -   Custom analytics
+
+-   2.2 Verificare che i log registrino le attività dei sistemi di
+    scanning delle vulnerabilità
+
+    -   Scanner activity monitoring
+
+-   2.3 Verificare nei log la presenza di attacchi pregressi condotti
+    contro target riconosciuto come vulnerabile
+
+    -   Threat intelligence
+
+    -   Attack pattern analysis
+
+    -   Custom detection
+
+-   3.1 Eseguire le scansioni di vulnerabilità in modalità privilegiata,
+    sia localmente, sia da remoto, utilizzando un account dedicato che
+    non deve essere usato per nessun'altra attività di amministrazione.
+
+    -   Scan autonomation e access control
+
+-   3.2 Vincolare l'origine delle scansioni di vulnerabilità a
+    specifiche macchine o indirizzi IP, assicurando che solo il
+    personale autorizzato abbia accesso a tale interfaccia e la utilizzi
+    propriamente.
+
+-   4.1 Assicurare che gli strumenti di scansione delle vulnerabilità
+    utilizzati siano regolarmente aggiornati con tutte le più rilevanti
+    vulnerabilità di sicurezza.
+
+-   4.2 Registrarsi ad un servizio che fornisca tempestivamente le
+    informazioni sulle nuove minacce e vulnerabilità. Utilizzandole per
+    aggiornare le attività di scansione
+
+-   5.1 Installare automaticamente le patch e gli aggiornamenti del
+    software sia per il sistema operativo sia per le applicazioni.
+
+-   5.2 Assicurare l'aggiornamento dei sistemi separati dalla rete, in
+    particolare di quelli air-gapped, adottando misure adeguate al loro
+    livello di criticità.
+
+    -   Parzialmente automatizzabile -- necessita un intervento manuale
+
+-   6.1 Verificare regolarmente che tutte le attività di scansione
+    effettuate con gli account aventi privilegi di amministratore siano
+    state eseguite secondo delle policy predefinite.
+
+    -   Compilance checking
+
+-   7.1 Verificare che le vulnerabilità emerse dalle scansioni siano
+    state risolte sia per mezzo di patch, o implementando opportune
+    contromisure oppure documentando e accettando un ragionevole rischio
+    7.2 Rivedere periodicamente l'accettazione dei rischi di
+    vulnerabilità esistenti per determinare se misure più recenti o
+    successive patch possono essere risolutive o se le condizioni sono
+    cambiate, con la conseguente modifica del livello di rischio.
+
+-   8.1 Definire un piano di gestione dei rischi che tenga conto dei
+    livelli di gravità delle vulnerabilità, del potenziale impatto e
+    della tipologia degli apparati (e.g. server esposti, server interni,
+    PdL, portatili, etc.)
+
+-   8.2 Attribuire alle azioni per la risoluzione delle vulnerabilità un
+    livello di priorità in base al rischio associato. In particolare
+    applicare le patch per le vulnerabilità a partire da quelle più
+    critiche.
+
+-   9.1 Prevedere, in caso di nuove vulnerabilità, misure alternative se
+    non sono immediatamente disponibili patch o se i tempi di
+    distribuzione non sono compatibili con quelli fissati
+    dall'organizzazione.
+
+-   10.1 Valutare in un opportuno ambiente di test le patch dei prodotti
+    non standard (es.: quelli sviluppati ad hoc) prima di installarle
+    nei sistemi in esercizio.
+
+Openvas integration e OpenSCAP integration con scan periodici e con
+aggiornamento tramite Threat intelligence feeds automatici per rilevare
+vulnerabilità nei sistemi
+
+Definizione di:
+
+-   Risk management system
+
+-   Priority automation
+
+-   Patch management system e update automation
+
+-   Risk assessment automation
+
+-
+
+Admin
+
+-   1.1 Limitare i privilegi di amministrazione ai soli utenti che
+    abbiano le competenze adeguate e la necessità operativa di
+    modificare la configurazione dei sistemi
+
+-   1.2 Utilizzare le utenze amministrative solo per effettuare
+    operazioni che ne richiedano i privilegi, registrando ogni accesso
+    effettuato.
+
+-   1.3 Assegnare a ciascuna utenza amministrativa solo i privilegi
+    necessari per svolgere le attività previste per essa.
+
+-   1.4 Registrare le azioni compiute da un'utenza amministrativa e
+    rilevare ogni anomalia di comportamento.
+
+-   2.1 Mantenere l'inventario di tutte le utenze amministrative,
+    garantendo che ciascuna di esse sia debitamente e formalmente
+    autorizzata.
+
+-   2.2 Gestire l'inventario delle utenze amministrative attraverso uno
+    strumento automatico che segnali ogni variazione che intervenga
+
+    -   Change detection con alert system e automated inventory
+
+-   3.1 Prima di collegare alla rete un nuovo dispositivo sostituire le
+    credenziali dell'amministratore predefinito con valori coerenti con
+    quelli delle utenze amministrative in uso.
+
+-   4.1 Tracciare nei log l'aggiunta o la soppressione di un'utenza
+    amministrativa.
+
+-   4.2 Generare un'allerta quando viene aggiunta un'utenza
+    amministrativa.
+
+-   4.3 Generare un'allerta quando vengano aumentati i diritti di
+    un'utenza amministrativa.
+
+-   5.1 Tracciare nei log i tentativi falliti di accesso con un'utenza
+    amministrativa.
+
+    -   Failed access monitoring
+
+    -   Pattern detection
+
+-   6.1 Utilizzare sistemi di autenticazione a più fattori per tutti gli
+    accessi amministrativi, inclusi gli accessi di amministrazione di
+    dominio. L'autenticazione a più fattori può utilizzare diverse
+    tecnologie, quali smart card, certificati digitali, one time
+    password (OTP), token, biometria ed altri analoghi sistemi
+
+-   7.1 Quando l'autenticazione a più fattori non è supportata,
+    utilizzare per le utenze amministrative credenziali di elevata
+    robustezza (e.g. almeno 14 caratteri).
+
+-   7.2 Impedire che per le utenze amministrative vengano utilizzate
+    credenziali deboli.
+
+-   7.3 Assicurare che le credenziali delle utenze amministrative
+    vengano sostituite con sufficiente frequenza (password aging).
+
+-   7.4 Impedire che credenziali già utilizzate possano essere
+    riutilizzate a breve distanza di tempo (password history).
+
+-   7.5 Assicurare che dopo la modifica delle credenziali trascorra un
+    sufficiente lasso di tempo per poterne effettuare una nuova.
+
+-   7.6 Assicurare che le stesse credenziali amministrative non possano
+    essere riutilizzate prima di sei mesi.
+
+-   8.1 Non consentire l'accesso diretto ai sistemi con le utenze
+    amministrative, obbligando gli amministratori ad accedere con
+    un'utenza normale e successivamente eseguire come utente
+    privilegiato i singoli comandi.
+
+-   9.1 Per le operazioni che richiedono privilegi gli amministratori
+    debbono utilizzare macchine dedicate, collocate su una rete
+    logicamente dedicata, isolata rispetto a Internet. Tali macchine non
+    possono essere utilizzate per altre attività.
+
+-   10.1 Assicurare la completa distinzione tra utenze privilegiate e
+    non privilegiate degli amministratori, alle quali debbono
+    corrispondere credenziali diverse.
+
+-   10.2 Tutte le utenze, in particolare quelle amministrative, debbono
+    essere nominative e riconducibili ad una sola persona
+
+-   10.3 Le utenze amministrative anonime, quali "root" di UNIX o
+    "Administrator" di Windows, debbono essere utilizzate solo per le
+    situazioni di emergenza e le relative credenziali debbono essere
+    gestite in modo da assicurare l'imputabilità di chi ne fa uso.
+
+-   10.4 Evitare l'uso di utenze amministrative locali per le macchine
+    quando sono disponibili utenze amministrative di livello più elevato
+    (e.g. dominio).
+
+-   11.1 Conservare le credenziali amministrative in modo da garantirne
+    disponibilità e riservatezza.
+
+-   11.2 Se per l'autenticazione si utilizzano certificati digitali,
+    garantire che le chiavi private siano adeguatamente protette.
+
+Password manager che richiede come Passbolt che richiede di utilizzare
+password forti e che richiede di cambiare le password in automatico ogni
+tot di tempo.
+
+-   I vari attori presenti Nella struttura vengono tracciati e suddivisi
+    su gruppi. Ogni gruppo ha una competenza e in base a questi gruppi
+    vengono definiti di accessi.
+
+-   Implementazione di un Access Logging System con Behavior analysis,
+    Activity monitoring e Anomaly detection.
+
+-   Change detection system
+
+-   Compilance cheching in mdo da controllare che le pw non siano deboli
+
+-   Change tracking, Audit system e Event monitoring
+
+-   Real-time monitoring, Alert system e Change detection
+
+-   Expiration management
+
+-   History tracking e reuse prevention
+
+-   Certificate management, Key protection
+
+Malware
+
+-   1.1 Installare su tutti i sistemi connessi alla rete locale
+    strumenti atti a rilevare la presenza e bloccare l'esecuzione di
+    malware (antivirus locali). Tali strumenti sono mantenuti aggiornati
+    in modo automatico
+
+-   1.2 Installare su tutti i dispositivi firewall ed IPS personali.
+
+-   1.3 Gli eventi rilevati dagli strumenti sono inviati ad un
+    repository centrale (syslog) dove sono stabilmente archiviati.
+
+-   2.1 Tutti gli strumenti di cui in ABSC_8.1 sono monitorati e gestiti
+    centralmente. Non è consentito agli utenti alterarne la
+    configurazione.
+
+-   2.2 È possibile forzare manualmente dalla console centrale
+    l'aggiornamento dei sistemi anti- malware installati su ciascun
+    dispositivo. La corretta esecuzione dell'aggiornamento è
+    automaticamente verificata e riportata alla console centrale.
+
+-   2.3 L'analisi dei potenziali malware è effettuata su di
+    un'infrastruttura dedicata, eventualmente basata sul cloud
+
+-   3.1 Limitare l'uso di dispositivi esterni a quelli necessari per le
+    attività aziendali. 3.2 Monitorare l'uso e i tentativi di utilizzo
+    di dispositivi esterni
+
+-   4.1 Abilitare le funzioni atte a contrastare lo sfruttamento delle
+    vulnerabilità, quali Data Execution Prevention (DEP), Address Space
+    Layout Randomization (ASLR), virtualizzazione, confinamento, etc.
+    disponibili nel software di base 4.2 Installare strumenti aggiuntivi
+    di contrasto allo sfruttamento delle vulnerabilità, ad esempio
+    quelli forniti come opzione dai produttori di sistemi operativi. 5.1
+    Usare strumenti di filtraggio che operano sull'intero flusso del
+    traffico di rete per impedire che il codice malevolo raggiunga gli
+    host. 5.2 Installare sistemi di analisi avanzata del software
+    sospetto. 6.1 Monitorare, analizzare ed eventualmente bloccare gli
+    accessi a indirizzi che abbiano una cattiva reputazione.
+
+-   7.1 Disattivare l'esecuzione automatica dei contenuti al momento
+    della connessione dei dispositivi removibili
+
+-   7.2 Disattivare l'esecuzione automatica dei contenuti dinamici (e.g.
+    macro) presenti nei file.
+
+-   7.3 Disattivare l'apertura automatica dei messaggi di posta
+    elettronica.
+
+-   7.4 Disattivare l'anteprima automatica dei contenuti dei file.
+
+-   8.1 Eseguire automaticamente una scansione anti-malware dei supporti
+    rimuovibili al momento della loro connessione.
+
+    -   Python con watchdog per monitoraggio device
+
+    -   Integration con ClamAV
+
+    -   Custom scanning engine con python-magic per file detection
+
+-   9.1 Filtrare il contenuto dei messaggi di posta prima che questi
+    raggiungano la casella del destinatario, prevedendo anche l'impiego
+    di strumenti antispam.
+
+    -   Python script con amavis
+
+    -   Custom mail filtering con python-mail-filter
+
+-   9.2 Filtrare il contenuto del traffico web. 9.3 Bloccare nella posta
+    elettronica e nel traffico web i file la cui tipologia non è
+    strettamente necessaria per l'organizzazione ed è potenzialmente
+    pericolosa (e.g. .cab).
+
+    -   Proxy con Python e mitmproxy
+
+-   10.1 Utilizzare strumenti anti-malware che sfruttino, oltre alle
+    firme, tecniche di rilevazione basate sulle anomalie di
+    comportamento.
+
+    -   Machine Learning con scikit-learn Behavioral analysis engine
+        Custom anomaly detection
+
+-   11.1 Implementare una procedura di risposta agli incidenti che
+    preveda la trasmissione al provider di sicurezza dei campioni di
+    software sospetto per la generazione di firme personalizzate.
+
+Backup
+
+-   1.1 Effettuare almeno settimanalmente una copia di sicurezza almeno
+    delle informazioni strettamente necessarie per il completo
+    ripristino del sistema.
+
+    -   Python backup orchestration rsync/rclone automation
+
+-   1.2 Per assicurare la capacità di recupero di un sistema dal proprio
+    backup, le procedure di backup devono riguardare il sistema
+    operativo, le applicazioni software e la parte dati.
+
+-   1.3 Effettuare backup multipli con strumenti diversi per contrastare
+    possibili malfunzionamenti nella fase di restore.
+
+-   2.1 Verificare periodicamente l'utilizzabilità delle copie mediante
+    ripristino di prova.
+
+-   3.1 Assicurare la riservatezza delle informazioni contenute nelle
+    copie di sicurezza mediante adeguata protezione fisica dei supporti
+    ovvero mediante cifratura. La codifica effettuata prima della
+    trasmissione consente la remotizzazione del backup anche nel cloud.
+
+    -   Python con crypograpy
+
+-   4.1 Assicurarsi che i supporti contenenti almeno una delle copie non
+    siano permanentemente accessibili dal sistema onde evitare che
+    attacchi su questo possano coinvolgere anche tutte le sue copie di
+    sicurezza.
+
+Crypto
+
+-   1.1 Effettuare un'analisi dei dati per individuare quelli con
+    particolari requisiti di riservatezza (dati rilevanti) e
+    segnatamente quelli ai quali va applicata la protezione
+    crittografica
+
+-   2.1 Utilizzare sistemi di cifratura per i dispositivi portatili e i
+    sistemi che contengono informazioni rilevanti
+
+-   3.1 Utilizzare sul perimetro della rete strumenti automatici per
+    bloccare, limitare ovvero monitorare in maniera puntuale, sul
+    traffico uscente dalla propria rete, l'impiego di crittografia non
+    autorizzata o l'accesso a siti che consentano lo scambio e la
+    potenziale esfiltrazione di informazioni.
+
+    -   Pyshark per la networl analysis
+
+-   4.1 Effettuare periodiche scansioni, attraverso sistemi
+    automatizzati, in grado di rilevare sui server la presenza di
+    specifici "data pattern", significativi per l'Amministrazione, al
+    fine di evidenziare l'esistenza di dati rilevanti in chiaro.
+
+-   5.1 Nel caso in cui non sia strettamente necessario l'utilizzo di
+    dispositivi esterni, implementare sistemi/configurazioni che
+    impediscano la scrittura di dati su tali supporti.
+
+-   5.2 Utilizzare strumenti software centralizzati atti a gestire il
+    collegamento alle workstation/server dei soli dispositivi esterni
+    autorizzati (in base a numero seriale o altre proprietà univoche)
+    cifrando i relativi dati. Mantenere una lista aggiornata di tali
+    dispositivi.
+
+-   6.1 Implementare strumenti DLP (Data Loss Prevention) di rete per
+    monitorare e controllare i flussi di dati all'interno della rete in
+    maniera da evidenziare eventuali anomalie.
+
+-   6.2 Qualsiasi anomalia rispetto al normale traffico di rete deve
+    essere registrata anche per consentirne l'analisi off line.
+
+-   7.1 Monitorare il traffico uscente rilevando le connessioni che
+    usano la crittografia senza che ciò sia previsto.
+
+-   8.1 Bloccare il traffico da e verso url presenti in una blacklist.
+
+    -   Url filtering
+
+-   9.1 Assicurare che la copia di un file fatta in modo autorizzato
+    mantenga le limitazioni di accesso della sorgente, ad esempio
+    attraverso sistemi che implementino le regole di controllo degli
+    accessi (e.g. Access Control List) anche quando i dati sono
+    trasferiti al di fuori del loro repository.
