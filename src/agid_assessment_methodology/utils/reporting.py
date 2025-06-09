@@ -530,32 +530,21 @@ class ReportGenerator:
             raise
 
     def _generate_pdf_report(self, report_data: Dict[str, Any], output_path: Path) -> Path:
-        """Genera un report in formato PDF."""
-        pdf_lib = _get_pdf_library()
-
-        if pdf_lib == "reportlab":
-            return self._generate_pdf_with_reportlab(report_data, output_path)
-        elif pdf_lib == "weasyprint":
-            return self._generate_pdf_with_weasyprint(report_data, output_path)
-        else:
-            # Fallback: crea PDF semplice con testo
-            logger.warning("No PDF library available, creating text-based PDF")
-            return self._generate_simple_pdf(report_data, output_path)
-
-    def _generate_pdf_with_reportlab(self, report_data: Dict[str, Any], output_path: Path) -> Path:
-        """Genera PDF usando reportlab (più semplice, sempre funziona)."""
+        """Genera PDF usando reportlab con contenuti completi."""
         try:
             from reportlab.lib.pagesizes import letter, A4
-            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, ListFlowable, \
+                ListItem
             from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
             from reportlab.lib import colors
+            from reportlab.lib.units import inch
 
             # Crea documento
             doc = SimpleDocTemplate(str(output_path), pagesize=A4)
             styles = getSampleStyleSheet()
             story = []
 
-            # Titolo
+            # Stili personalizzati
             title_style = ParagraphStyle(
                 'CustomTitle',
                 parent=styles['Heading1'],
@@ -563,67 +552,188 @@ class ReportGenerator:
                 spaceAfter=30,
                 alignment=1  # Center
             )
+            section_header_style = ParagraphStyle(
+                'SectionHeader',
+                parent=styles['Heading2'],
+                fontSize=16,
+                spaceAfter=12
+            )
+            subsection_style = ParagraphStyle(
+                'Subsection',
+                parent=styles['Heading3'],
+                fontSize=12,
+                spaceAfter=10
+            )
+
+            # Titolo del report
             story.append(Paragraph("Security Assessment Report", title_style))
             story.append(Spacer(1, 20))
 
-            # Executive Summary
-            story.append(Paragraph("Executive Summary", styles['Heading2']))
-            exec_summary = report_data.get("executive_summary", {})
-
-            summary_data = [
-                ["Risk Level", exec_summary.get("overall_risk_level", "N/A")],
-                ["Total Checks", str(exec_summary.get("total_checks", 0))],
-                ["Passed Checks", str(exec_summary.get("passed_checks", 0))],
-                ["Failed Checks", str(exec_summary.get("failed_checks", 0))],
-                ["Critical Issues", str(exec_summary.get("critical_issues", 0))]
+            # Metadata
+            metadata = report_data.get("metadata", {})
+            story.append(Paragraph("Report Metadata", section_header_style))
+            metadata_data = [
+                ["Generated", metadata.get("report_generated", "N/A")],
+                ["Report Version", metadata.get("report_version", "N/A")],
+                ["Tool Version", metadata.get("tool_version", "N/A")]
             ]
-
-            summary_table = Table(summary_data)
-            summary_table.setStyle([
+            metadata_table = Table(metadata_data, colWidths=[2 * inch, 4 * inch])
+            metadata_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 14),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ])
+            ]))
+            story.append(metadata_table)
+            story.append(Spacer(1, 20))
+
+            # Executive Summary
+            exec_summary = report_data.get("executive_summary", {})
+            story.append(Paragraph("Executive Summary", section_header_style))
+            summary_data = [
+                ["Target System", exec_summary.get("target_system", "N/A")],
+                ["Scan Timestamp", exec_summary.get("scan_timestamp", "N/A")],
+                ["Total Checks", str(exec_summary.get("total_checks", 0))],
+                ["Success Rate", f"{exec_summary.get('success_rate', 0):.2f}%"],
+                ["Overall Risk Level", exec_summary.get("overall_risk_level", "N/A")],
+                ["Critical Issues", str(exec_summary.get("critical_issues", 0))],
+                ["High Priority Recommendations",
+                 str(exec_summary.get("high_priority_recommendations", 0))]
+            ]
+            summary_table = Table(summary_data, colWidths=[2 * inch, 4 * inch])
+            summary_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
             story.append(summary_table)
             story.append(Spacer(1, 20))
 
-            # Compliance Summary
-            story.append(Paragraph("Compliance Summary", styles['Heading2']))
-            compliance_data = report_data.get("compliance_summary", {})
+            # Detailed Results
+            story.append(Paragraph("Detailed Results", section_header_style))
+            detailed_results = report_data.get("detailed_results", [])
 
-            compliance_table_data = [["Level", "Score", "Status"]]
-            for level in ["basic", "standard", "advanced"]:
-                level_data = compliance_data.get(f"{level}_compliance", {})
-                compliance_table_data.append([
-                    level.title(),
-                    f"{level_data.get('compliance_percentage', 0):.1f}%",
-                    "✓" if level_data.get('compliance_percentage', 0) >= 80 else "✗"
+            for category in detailed_results:
+                story.append(Paragraph(f"Category: {category.get('category', 'N/A')}", subsection_style))
+
+                result_data = [["Check", "Status", "Score", "Issues", "Recommendations"]]
+                for check in category.get("checks", []):
+                    result_data.append([
+                        check.get("name", "N/A"),
+                        check.get("status", "N/A"),
+                        str(check.get("score", "N/A")),
+                        str(check.get("issues_count", 0)),
+                        str(check.get("recommendations_count", 0))
+                    ])
+
+                result_table = Table(result_data, colWidths=[2 * inch, 1 * inch, 1 * inch, 1 * inch, 1 * inch])
+                result_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                ]))
+                story.append(result_table)
+                story.append(Spacer(1, 10))
+
+            # Recommendations
+            story.append(Paragraph("Recommendations", section_header_style))
+            recommendations = report_data.get("recommendations", [])
+
+            rec_data = [["Priority", "Category", "Check", "Description"]]
+            for rec in recommendations:
+                rec_data.append([
+                    rec.get("priority", "N/A").title(),
+                    rec.get("category", "N/A"),
+                    rec.get("check", "N/A"),
+                    rec.get("description", "N/A")
                 ])
 
-            compliance_table = Table(compliance_table_data)
-            compliance_table.setStyle([
+            rec_table = Table(rec_data, colWidths=[1 * inch, 1.5 * inch, 1.5 * inch, 2 * inch])
+            rec_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ])
+            ]))
+            story.append(rec_table)
+            story.append(Spacer(1, 20))
+
+            # Compliance Summary
+            story.append(Paragraph("Compliance Summary", section_header_style))
+            compliance = report_data.get("compliance_summary", {})
+
+            compliance_data = [
+                ["Compliance Level", "Compliance Percentage"],
+                ["Basic", f"{compliance.get('basic_compliance', {}).get('compliance_percentage', 0):.2f}%"],
+                ["Standard", f"{compliance.get('standard_compliance', {}).get('compliance_percentage', 0):.2f}%"],
+                ["Advanced", f"{compliance.get('advanced_compliance', {}).get('compliance_percentage', 0):.2f}%"],
+                ["Overall", f"{compliance.get('overall_compliance_score', 0):.2f}%"]
+            ]
+
+            compliance_table = Table(compliance_data, colWidths=[2 * inch, 2 * inch])
+            compliance_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
             story.append(compliance_table)
             story.append(Spacer(1, 20))
 
-            # Recommendations
-            recommendations = report_data.get("recommendations", [])
-            if recommendations:
-                story.append(Paragraph("Top Recommendations", styles['Heading2']))
-                for i, rec in enumerate(recommendations[:5]):  # Top 5
-                    rec_text = f"{i + 1}. [{rec.get('priority', 'Medium')}] {rec.get('description', 'N/A')}"
-                    story.append(Paragraph(rec_text, styles['Normal']))
-                    story.append(Spacer(1, 6))
+            # Risk Analysis
+            story.append(Paragraph("Risk Analysis", section_header_style))
+            risk_analysis = report_data.get("risk_analysis", {})
+
+            risk_data = [
+                ["Risk Factor", "Value"],
+                ["Overall Risk Level", risk_analysis.get("overall_risk_level", "N/A")],
+                ["Critical Issues", str(risk_analysis.get("risk_factors", {}).get("critical_issues", 0))],
+                ["Failed Checks", str(risk_analysis.get("risk_factors", {}).get("failed_checks", 0))],
+                ["Success Rate", f"{risk_analysis.get('risk_factors', {}).get('success_rate', 0):.2f}%"]
+            ]
+
+            risk_table = Table(risk_data, colWidths=[2 * inch, 2 * inch])
+            risk_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(risk_table)
+
+            # Raw Data (Optional, può essere troppo dettagliato per PDF)
+            if report_data.get('raw_data'):
+                story.append(Spacer(1, 20))
+                story.append(Paragraph("Raw Data", section_header_style))
+                story.append(
+                    Paragraph("Raw data details are omitted for brevity. Refer to JSON or CSV report for full details.",
+                              styles['Normal']))
 
             # Genera PDF
             doc.build(story)
